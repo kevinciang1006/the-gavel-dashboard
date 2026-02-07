@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useAccount } from "wagmi";
+import { useWallet } from "@/hooks/useWallet";
 import { useConnectModal } from "@rainbow-me/rainbowkit";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -25,7 +25,7 @@ interface BuyPositionModalProps {
 }
 
 const BuyPositionModal = ({ open, onOpenChange, listing }: BuyPositionModalProps) => {
-  const { address, isConnected } = useAccount();
+  const { address, isConnected } = useWallet();
   const { openConnectModal } = useConnectModal();
   const buyPosition = useMarketplaceStore((state) => state.buyPosition);
 

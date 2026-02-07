@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { useAccount } from "wagmi";
+import { useWallet } from "@/hooks/useWallet";
 import { useConnectModal } from "@rainbow-me/rainbowkit";
 import { toast } from "sonner";
 import Header from "@/components/layout/Header";
@@ -114,7 +114,7 @@ function getLoanDisplayStatus(loan: Loan): {
 }
 
 const ActiveLoans = () => {
-	const { address, isConnected } = useAccount();
+	const { address, isConnected } = useWallet();
 	const { openConnectModal } = useConnectModal();
 	const loans = useLoanStore((state) => state.loans);
 	const repayLoan = useLoanStore((state) => state.repayLoan);

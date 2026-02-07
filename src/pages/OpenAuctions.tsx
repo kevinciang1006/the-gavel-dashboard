@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { useAccount } from "wagmi";
+import { useWallet } from "@/hooks/useWallet";
 import Header from "@/components/layout/Header";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -57,7 +57,7 @@ function getTokenIcon(token: string): string {
 }
 
 const OpenAuctions = () => {
-  const { isConnected } = useAccount();
+  const { isConnected } = useWallet();
   const allAuctions = useAuctionStore((state) => state.auctions);
   const updateAuctionStatuses = useAuctionStore((state) => state.updateAuctionStatuses);
 

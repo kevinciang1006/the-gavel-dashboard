@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useAccount } from "wagmi";
+import { useWallet } from "@/hooks/useWallet";
 import { useConnectModal } from "@rainbow-me/rainbowkit";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -33,7 +33,7 @@ interface CreateNFTAuctionModalProps {
 }
 
 const CreateNFTAuctionModal = ({ open, onOpenChange, nft }: CreateNFTAuctionModalProps) => {
-  const { isConnected } = useAccount();
+  const { isConnected } = useWallet();
   const { openConnectModal } = useConnectModal();
 
   const [loanToken, setLoanToken] = useState<"USDC" | "USDT">("USDC");

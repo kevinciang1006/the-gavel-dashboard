@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { useAccount } from "wagmi";
+import { useWallet } from "@/hooks/useWallet";
 import { useConnectModal } from "@rainbow-me/rainbowkit";
 import { toast } from "sonner";
 import Header from "@/components/layout/Header";
@@ -42,7 +42,7 @@ import { useMarketplaceStore } from "@/store/useMarketplaceStore";
 import type { Loan, MarketplaceListing } from "@/types";
 
 const Marketplace = () => {
-  const { address, isConnected } = useAccount();
+  const { address, isConnected } = useWallet();
   const { openConnectModal } = useConnectModal();
   const loans = useLoanStore((state) => state.loans);
   const listings = useMarketplaceStore((state) => state.listings);

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useAccount } from "wagmi";
+import { useWallet } from "@/hooks/useWallet";
 import { useConnectModal } from "@rainbow-me/rainbowkit";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -32,7 +32,7 @@ interface MakeOfferModalProps {
 }
 
 const MakeOfferModal = ({ open, onOpenChange, listing }: MakeOfferModalProps) => {
-  const { isConnected } = useAccount();
+  const { isConnected } = useWallet();
   const { openConnectModal } = useConnectModal();
 
   const [offerAmount, setOfferAmount] = useState("");
