@@ -4,6 +4,7 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
 import { trackPageView } from "@/lib/analytics";
+import AppLayout from "@/components/layout/AppLayout";
 import Index from "./pages/Index";
 import CreateAuction from "./pages/CreateAuction";
 import OpenAuctions from "./pages/OpenAuctions";
@@ -31,13 +32,15 @@ const App = () => (
     <BrowserRouter>
       <PageViewTracker />
       <Routes>
-        <Route path="/" element={<Index />} />
-        <Route path="/create-auction" element={<CreateAuction />} />
-        <Route path="/auctions" element={<OpenAuctions />} />
-        <Route path="/loans" element={<ActiveLoans />} />
-        <Route path="/marketplace" element={<Marketplace />} />
-        <Route path="/nft-lending" element={<NFTLending />} />
-        <Route path="/analytics" element={<Analytics />} />
+        <Route element={<AppLayout />}>
+          <Route path="/" element={<Index />} />
+          <Route path="/create-auction" element={<CreateAuction />} />
+          <Route path="/auctions" element={<OpenAuctions />} />
+          <Route path="/loans" element={<ActiveLoans />} />
+          <Route path="/marketplace" element={<Marketplace />} />
+          <Route path="/nft-lending" element={<NFTLending />} />
+          <Route path="/analytics" element={<Analytics />} />
+        </Route>
         <Route path="*" element={<NotFound />} />
       </Routes>
     </BrowserRouter>

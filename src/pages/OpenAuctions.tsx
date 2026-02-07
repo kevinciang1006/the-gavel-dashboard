@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { useWallet } from "@/hooks/useWallet";
-import Header from "@/components/layout/Header";
+
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -140,9 +140,7 @@ const OpenAuctions = () => {
   };
 
   return (
-    <div className="min-h-screen bg-background">
-      <Header />
-      <main className="container py-8">
+    <div className="container py-8">
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
           <h1 className="text-2xl font-bold">Open Auctions</h1>
@@ -366,7 +364,6 @@ const OpenAuctions = () => {
             </div>
           </div>
         )}
-      </main>
 
       {selectedAuction && (
         <PlaceBidModal

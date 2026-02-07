@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import Header from "@/components/layout/Header";
+
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -275,9 +275,7 @@ const Analytics = () => {
   }, [loans]);
 
   return (
-    <div className="min-h-screen bg-background">
-      <Header />
-      <main className="container py-8">
+    <div className="container py-8">
         {/* Page Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
           <div>
@@ -498,7 +496,6 @@ const Analytics = () => {
             </div>
           </CardContent>
         </Card>
-      </main>
     </div>
   );
 };
