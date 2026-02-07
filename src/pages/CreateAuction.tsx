@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useWallet } from "@/hooks/useWallet";
 import { useConnectModal } from "@rainbow-me/rainbowkit";
 import { toast } from "sonner";
-import Header from "@/components/layout/Header";
+
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -212,9 +212,7 @@ const CreateAuction = () => {
 	};
 
 	return (
-		<div className="min-h-screen bg-background">
-			<Header />
-			<main className="container py-8 max-w-5xl">
+		<div className="container py-8 max-w-5xl">
 				<Button
 					variant="ghost"
 					size="sm"
@@ -689,7 +687,6 @@ const CreateAuction = () => {
 						</div>
 					</motion.div>
 				</div>
-			</main>
 		</div>
 	);
 };

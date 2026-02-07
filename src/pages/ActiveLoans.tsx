@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from "react";
 import { useWallet } from "@/hooks/useWallet";
 import { useConnectModal } from "@rainbow-me/rainbowkit";
 import { toast } from "sonner";
-import Header from "@/components/layout/Header";
+
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -259,9 +259,7 @@ const ActiveLoans = () => {
 	};
 
 	return (
-		<div className="min-h-screen bg-background">
-			<Header />
-			<main className="container py-8">
+		<div className="container py-8">
 				{/* Header */}
 				<div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
 					<h1 className="text-2xl font-bold">Your Active Loans</h1>
@@ -645,7 +643,7 @@ const ActiveLoans = () => {
 						</p>
 					</div>
 				)}
-			</main>
+
 
 			{/* Confirmation Dialog */}
 			<Dialog

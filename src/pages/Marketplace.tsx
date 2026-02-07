@@ -2,7 +2,7 @@ import { useState, useMemo } from "react";
 import { useWallet } from "@/hooks/useWallet";
 import { useConnectModal } from "@rainbow-me/rainbowkit";
 import { toast } from "sonner";
-import Header from "@/components/layout/Header";
+
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -136,9 +136,7 @@ const Marketplace = () => {
   };
 
   return (
-    <div className="min-h-screen bg-background">
-      <Header />
-      <main className="container py-8">
+    <div className="container py-8">
         {/* Page Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
           <div>
@@ -486,7 +484,7 @@ const Marketplace = () => {
             </Tabs>
           </div>
         </div>
-      </main>
+      
 
       {/* Modals */}
       {buyListing && (
