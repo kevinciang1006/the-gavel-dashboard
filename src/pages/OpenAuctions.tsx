@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useEffect, useMemo } from "react";
+import { useAccount } from "wagmi";
 import Header from "@/components/layout/Header";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -20,93 +21,91 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { motion } from "framer-motion";
-import { Search, Filter, RefreshCw, Clock, Gavel } from "lucide-react";
+import { Search, Filter, RefreshCw, Clock, Gavel, Plus } from "lucide-react";
+import { Link } from "react-router-dom";
+import { useAuctionStore } from "@/store/useAuctionStore";
+import type { Auction } from "@/types";
 
-const allAuctions = [
-  {
-    id: "#1",
-    collateral: "1.5 WBTC",
-    collateralIcon: "₿",
-    loan: "50,000 USDC",
-    maxRepay: "55,000 USDC",
-    aprBadge: "~10%",
-    currentBid: "52,500 USDC",
-    bids: 5,
-    timeLeft: "4h 23m",
-    status: "Active" as const,
-    type: "WBTC",
-    currentBidder: "0x1234...5678",
-  },
-  {
-    id: "#2",
-    collateral: "25 ETH",
-    collateralIcon: "Ξ",
-    loan: "80,000 USDC",
-    maxRepay: "88,000 USDC",
-    aprBadge: "~10%",
-    currentBid: "84,200 USDC",
-    bids: 8,
-    timeLeft: "12h 10m",
-    status: "Active" as const,
-    type: "ETH",
-    currentBidder: "0xABCD...EF01",
-  },
-  {
-    id: "#3",
-    collateral: "0.8 WBTC",
-    collateralIcon: "₿",
-    loan: "30,000 USDT",
-    maxRepay: "33,000 USDT",
-    aprBadge: "~10%",
-    currentBid: "31,800 USDT",
-    bids: 3,
-    timeLeft: "45m",
-    status: "Ending Soon" as const,
-    type: "WBTC",
-    currentBidder: "0x9876...5432",
-  },
-  {
-    id: "#4",
-    collateral: "10 ETH",
-    collateralIcon: "Ξ",
-    loan: "25,000 USDC",
-    maxRepay: "27,500 USDC",
-    aprBadge: "~10%",
-    currentBid: "26,100 USDC",
-    bids: 2,
-    timeLeft: "18h 45m",
-    status: "Active" as const,
-    type: "ETH",
-    currentBidder: "0xDEAD...BEEF",
-  },
-  {
-    id: "#5",
-    collateral: "2.0 WBTC",
-    collateralIcon: "₿",
-    loan: "100,000 USDC",
-    maxRepay: "112,000 USDC",
-    aprBadge: "~12%",
-    currentBid: "105,500 USDC",
-    bids: 11,
-    timeLeft: "22m",
-    status: "Ending Soon" as const,
-    type: "WBTC",
-    currentBidder: "0xFACE...1234",
-  },
-];
+// Format time remaining
+function formatTimeLeft(endTime: number): string {
+  const now = Date.now();
+  const diff = endTime - now;
+
+  if (diff <= 0) return "Ended";
+
+  const hours = Math.floor(diff / (1000 * 60 * 60));
+  const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+  const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+
+  if (hours > 0) {
+    return `${hours}h ${minutes}m`;
+  } else if (minutes > 0) {
+    return `${minutes}m ${seconds}s`;
+  }
+  return `${seconds}s`;
+}
+
+// Get token icon
+function getTokenIcon(token: string): string {
+  switch (token) {
+    case "WBTC": return "₿";
+    case "ETH": return "Ξ";
+    case "USDC": return "◉";
+    case "USDT": return "₮";
+    default: return "●";
+  }
+}
 
 const OpenAuctions = () => {
+  const { isConnected } = useAccount();
+  const allAuctions = useAuctionStore((state) => state.auctions);
+  const updateAuctionStatuses = useAuctionStore((state) => state.updateAuctionStatuses);
+
+  // Filter active auctions (memoized to avoid infinite loop)
+  const auctions = useMemo(() => {
+    return allAuctions.filter(
+      (a) => a.status === "active" || a.status === "ending_soon"
+    );
+  }, [allAuctions]);
+
   const [search, setSearch] = useState("");
   const [collateralFilter, setCollateralFilter] = useState("All");
   const [timeFilter, setTimeFilter] = useState("All");
   const [showFilters, setShowFilters] = useState(false);
-  const [selectedAuction, setSelectedAuction] = useState<typeof allAuctions[0] | null>(null);
+  const [selectedAuction, setSelectedAuction] = useState<Auction | null>(null);
+  const [, setTick] = useState(0);
 
-  const filtered = allAuctions.filter((a) => {
-    if (collateralFilter !== "All" && a.type !== collateralFilter) return false;
-    if (search && !a.id.includes(search) && !a.collateral.toLowerCase().includes(search.toLowerCase())) return false;
-    return true;
-  });
+  // Update countdown timers every second
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setTick((t) => t + 1);
+      updateAuctionStatuses();
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [updateAuctionStatuses]);
+
+  // Filter auctions
+  const filtered = useMemo(() => {
+    return auctions.filter((a) => {
+      if (collateralFilter !== "All" && a.collateralToken !== collateralFilter) return false;
+      if (search && !a.id.includes(search) && !a.collateralAmount.toLowerCase().includes(search.toLowerCase())) return false;
+
+      // Time filter
+      if (timeFilter !== "All") {
+        const timeLeft = a.auctionEndTime - Date.now();
+        const hours = timeLeft / (1000 * 60 * 60);
+        if (timeFilter === "1h" && hours > 1) return false;
+        if (timeFilter === "6h" && hours > 6) return false;
+        if (timeFilter === "24h" && hours > 24) return false;
+      }
+
+      return true;
+    });
+  }, [auctions, collateralFilter, search, timeFilter]);
+
+  const handleRefresh = () => {
+    updateAuctionStatuses();
+  };
 
   return (
     <div className="min-h-screen bg-background">
@@ -128,8 +127,14 @@ const OpenAuctions = () => {
             <Button variant="outline" size="icon" onClick={() => setShowFilters(!showFilters)}>
               <Filter className="h-4 w-4" />
             </Button>
-            <Button variant="outline" size="icon">
+            <Button variant="outline" size="icon" onClick={handleRefresh}>
               <RefreshCw className="h-4 w-4" />
+            </Button>
+            <Button variant="gradient" size="sm" asChild className="gap-1.5">
+              <Link to="/create-auction">
+                <Plus className="h-4 w-4" />
+                <span className="hidden sm:inline">Create Auction</span>
+              </Link>
             </Button>
           </div>
         </div>
@@ -179,6 +184,32 @@ const OpenAuctions = () => {
           </motion.div>
         )}
 
+        {/* Stats */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
+          <div className="rounded-lg border border-border bg-card p-4">
+            <p className="text-xs text-muted-foreground">Total Auctions</p>
+            <p className="text-2xl font-bold font-mono-numbers">{auctions.length}</p>
+          </div>
+          <div className="rounded-lg border border-border bg-card p-4">
+            <p className="text-xs text-muted-foreground">Ending Soon</p>
+            <p className="text-2xl font-bold font-mono-numbers text-warning">
+              {auctions.filter((a) => a.status === "ending_soon").length}
+            </p>
+          </div>
+          <div className="rounded-lg border border-border bg-card p-4">
+            <p className="text-xs text-muted-foreground">Total Bids</p>
+            <p className="text-2xl font-bold font-mono-numbers">
+              {auctions.reduce((sum, a) => sum + a.bidCount, 0)}
+            </p>
+          </div>
+          <div className="rounded-lg border border-border bg-card p-4">
+            <p className="text-xs text-muted-foreground">Total Value</p>
+            <p className="text-2xl font-bold font-mono-numbers text-accent">
+              ${auctions.reduce((sum, a) => sum + parseFloat(a.loanAmount), 0).toLocaleString()}
+            </p>
+          </div>
+        </div>
+
         {/* Table */}
         {filtered.length > 0 ? (
           <div className="rounded-xl border border-border bg-card overflow-hidden">
@@ -196,53 +227,72 @@ const OpenAuctions = () => {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filtered.map((auction) => (
-                  <TableRow
-                    key={auction.id}
-                    className="border-border hover:bg-secondary/30 transition-colors cursor-pointer"
-                  >
-                    <TableCell>
-                      <Badge variant="muted" className="font-mono-numbers">{auction.id}</Badge>
-                    </TableCell>
-                    <TableCell>
-                      <span className="flex items-center gap-2">
-                        <span className="text-lg">{auction.collateralIcon}</span>
-                        <span className="font-mono-numbers text-sm">{auction.collateral}</span>
-                      </span>
-                    </TableCell>
-                    <TableCell className="font-mono-numbers text-sm">{auction.loan}</TableCell>
-                    <TableCell className="hidden md:table-cell">
-                      <span className="font-mono-numbers text-sm">{auction.maxRepay}</span>
-                      <Badge variant="accent" className="ml-2 text-[10px]">{auction.aprBadge}</Badge>
-                    </TableCell>
-                    <TableCell>
-                      <span className="font-mono-numbers text-sm">{auction.currentBid}</span>
-                      <span className="text-xs text-muted-foreground block">({auction.bids} bids)</span>
-                    </TableCell>
-                    <TableCell className="hidden sm:table-cell">
-                      <span className={`flex items-center gap-1.5 font-mono-numbers text-sm ${
-                        auction.status === "Ending Soon" ? "text-warning" : ""
-                      }`}>
-                        <Clock className="h-3.5 w-3.5" />
-                        {auction.timeLeft}
-                      </span>
-                    </TableCell>
-                    <TableCell className="hidden sm:table-cell">
-                      <Badge variant={auction.status === "Ending Soon" ? "warning" : "success"}>
-                        {auction.status}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Button
-                        variant="gradient"
-                        size="sm"
-                        onClick={() => setSelectedAuction(auction)}
-                      >
-                        Place Bid
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
+                {filtered.map((auction) => {
+                  const timeLeft = formatTimeLeft(auction.auctionEndTime);
+                  const isEndingSoon = auction.status === "ending_soon";
+                  const interestRate = auction.currentBid
+                    ? ((parseFloat(auction.currentBid) - parseFloat(auction.loanAmount)) / parseFloat(auction.loanAmount) * 100).toFixed(1)
+                    : ((parseFloat(auction.maxRepayment) - parseFloat(auction.loanAmount)) / parseFloat(auction.loanAmount) * 100).toFixed(1);
+
+                  return (
+                    <TableRow
+                      key={auction.id}
+                      className="border-border hover:bg-secondary/30 transition-colors cursor-pointer"
+                    >
+                      <TableCell>
+                        <Badge variant="muted" className="font-mono-numbers">{auction.id}</Badge>
+                      </TableCell>
+                      <TableCell>
+                        <span className="flex items-center gap-2">
+                          <span className="text-lg">{getTokenIcon(auction.collateralToken)}</span>
+                          <span className="font-mono-numbers text-sm">{auction.collateralAmount} {auction.collateralToken}</span>
+                        </span>
+                      </TableCell>
+                      <TableCell className="font-mono-numbers text-sm">
+                        {parseFloat(auction.loanAmount).toLocaleString()} {auction.loanToken}
+                      </TableCell>
+                      <TableCell className="hidden md:table-cell">
+                        <span className="font-mono-numbers text-sm">
+                          {parseFloat(auction.maxRepayment).toLocaleString()} {auction.loanToken}
+                        </span>
+                        <Badge variant="accent" className="ml-2 text-[10px]">~{interestRate}%</Badge>
+                      </TableCell>
+                      <TableCell>
+                        <span className="font-mono-numbers text-sm">
+                          {auction.currentBid
+                            ? `${parseFloat(auction.currentBid).toLocaleString()} ${auction.loanToken}`
+                            : "No bids"}
+                        </span>
+                        <span className="text-xs text-muted-foreground block">
+                          ({auction.bidCount} bids)
+                        </span>
+                      </TableCell>
+                      <TableCell className="hidden sm:table-cell">
+                        <span className={`flex items-center gap-1.5 font-mono-numbers text-sm ${
+                          isEndingSoon ? "text-warning" : ""
+                        }`}>
+                          <Clock className="h-3.5 w-3.5" />
+                          {timeLeft}
+                        </span>
+                      </TableCell>
+                      <TableCell className="hidden sm:table-cell">
+                        <Badge variant={isEndingSoon ? "warning" : "success"}>
+                          {isEndingSoon ? "Ending Soon" : "Active"}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Button
+                          variant="gradient"
+                          size="sm"
+                          onClick={() => setSelectedAuction(auction)}
+                          disabled={!isConnected}
+                        >
+                          {isConnected ? "Place Bid" : "Connect"}
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
           </div>
@@ -251,9 +301,14 @@ const OpenAuctions = () => {
             <Gavel className="h-12 w-12 text-muted-foreground mb-4" />
             <h3 className="text-lg font-semibold mb-1">No auctions match your filters</h3>
             <p className="text-sm text-muted-foreground mb-4">Try adjusting your search or filters</p>
-            <Button variant="outline" onClick={() => { setSearch(""); setCollateralFilter("All"); }}>
-              Clear Filters
-            </Button>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => { setSearch(""); setCollateralFilter("All"); setTimeFilter("All"); }}>
+                Clear Filters
+              </Button>
+              <Button variant="gradient" asChild>
+                <Link to="/create-auction">Create Auction</Link>
+              </Button>
+            </div>
           </div>
         )}
       </main>
@@ -262,14 +317,7 @@ const OpenAuctions = () => {
         <PlaceBidModal
           open={!!selectedAuction}
           onOpenChange={(open) => !open && setSelectedAuction(null)}
-          auction={{
-            id: selectedAuction.id,
-            collateral: selectedAuction.collateral,
-            loanAmount: selectedAuction.loan.replace(" USDC", "").replace(" USDT", ""),
-            currentBid: selectedAuction.currentBid.replace(" USDC", "").replace(" USDT", ""),
-            currentBidder: selectedAuction.currentBidder,
-            maxRepayment: selectedAuction.maxRepay.replace(" USDC", "").replace(" USDT", ""),
-          }}
+          auction={selectedAuction}
         />
       )}
     </div>

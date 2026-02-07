@@ -1,4 +1,8 @@
 import { useState, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
+import { useAccount } from "wagmi";
+import { useConnectModal } from "@rainbow-me/rainbowkit";
+import { toast } from "sonner";
 import Header from "@/components/layout/Header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,8 +16,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { motion } from "framer-motion";
-import { ArrowLeft, Check, Info } from "lucide-react";
+import { ArrowLeft, Check, Info, Loader2, Wallet } from "lucide-react";
 import { Link } from "react-router-dom";
+import { useAuctionStore } from "@/store/useAuctionStore";
+import * as contracts from "@/lib/mockContracts";
 
 const steps = [
   { number: 1, label: "Collateral" },
@@ -22,14 +28,28 @@ const steps = [
 ];
 
 const CreateAuction = () => {
-  const [collateralToken, setCollateralToken] = useState("WBTC");
+  const navigate = useNavigate();
+  const { address, isConnected } = useAccount();
+  const { openConnectModal } = useConnectModal();
+  const createAuction = useAuctionStore((state) => state.createAuction);
+
+  // Form state
+  const [collateralToken, setCollateralToken] = useState<"WBTC" | "ETH">("WBTC");
   const [collateralAmount, setCollateralAmount] = useState("");
-  const [loanToken, setLoanToken] = useState("USDC");
+  const [loanToken, setLoanToken] = useState<"USDC" | "USDT">("USDC");
   const [loanAmount, setLoanAmount] = useState("");
   const [maxRepayment, setMaxRepayment] = useState("");
   const [loanDuration, setLoanDuration] = useState("");
   const [auctionDuration, setAuctionDuration] = useState("");
   const [useListingService, setUseListingService] = useState(false);
+
+  // Transaction state
+  const [isApproving, setIsApproving] = useState(false);
+  const [isApproved, setIsApproved] = useState(false);
+  const [isDepositing, setIsDepositing] = useState(false);
+  const [isDeposited, setIsDeposited] = useState(false);
+  const [depositedAmount, setDepositedAmount] = useState("0");
+  const [isCreating, setIsCreating] = useState(false);
 
   const activeStep = useMemo(() => {
     if (!collateralToken || !collateralAmount) return 1;
@@ -47,6 +67,105 @@ const CreateAuction = () => {
     return null;
   }, [loanAmount, maxRepayment]);
 
+  // Validation
+  const validationErrors = useMemo(() => {
+    const errors: string[] = [];
+    if (collateralAmount && parseFloat(collateralAmount) <= 0) {
+      errors.push("Collateral amount must be greater than 0");
+    }
+    if (loanAmount && parseFloat(loanAmount) <= 0) {
+      errors.push("Loan amount must be greater than 0");
+    }
+    if (loanAmount && maxRepayment && parseFloat(maxRepayment) <= parseFloat(loanAmount)) {
+      errors.push("Max repayment must be greater than loan amount");
+    }
+    return errors;
+  }, [collateralAmount, loanAmount, maxRepayment]);
+
+  const handleApprove = async () => {
+    if (!isConnected) {
+      openConnectModal?.();
+      return;
+    }
+
+    setIsApproving(true);
+    try {
+      await contracts.approveToken(collateralToken, "AuctionHouse", collateralAmount);
+      setIsApproved(true);
+    } catch (error) {
+      console.error("Approval failed:", error);
+    } finally {
+      setIsApproving(false);
+    }
+  };
+
+  const handleDeposit = async () => {
+    if (!isApproved) {
+      toast.error("Please approve token first");
+      return;
+    }
+
+    setIsDepositing(true);
+    try {
+      // Simulate deposit transaction
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+      toast.success("Collateral deposited!", {
+        description: `${collateralAmount} ${collateralToken} deposited`,
+      });
+      setIsDeposited(true);
+      setDepositedAmount(collateralAmount);
+    } catch (error) {
+      console.error("Deposit failed:", error);
+      toast.error("Deposit failed");
+    } finally {
+      setIsDepositing(false);
+    }
+  };
+
+  const handleCreateAuction = async () => {
+    if (!isConnected || !address) {
+      openConnectModal?.();
+      return;
+    }
+
+    if (!isDeposited) {
+      toast.error("Please deposit collateral first");
+      return;
+    }
+
+    if (validationErrors.length > 0) {
+      validationErrors.forEach((error) => toast.error(error));
+      return;
+    }
+
+    setIsCreating(true);
+    try {
+      const auction = await createAuction(
+        {
+          collateralToken,
+          collateralAmount,
+          loanToken,
+          loanAmount,
+          maxRepayment,
+          loanDuration,
+          auctionDuration,
+        },
+        address
+      );
+
+      toast.success("Auction created!", {
+        description: `Auction ${auction.id} is now live`,
+      });
+
+      // Navigate to auctions page
+      navigate("/auctions");
+    } catch (error) {
+      console.error("Create auction failed:", error);
+    } finally {
+      setIsCreating(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-background">
       <Header />
@@ -56,6 +175,24 @@ const CreateAuction = () => {
         </Button>
 
         <h1 className="text-2xl font-bold mb-8">Create Auction</h1>
+
+        {/* Wallet Connection Warning */}
+        {!isConnected && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mb-6 p-4 rounded-xl border border-warning/30 bg-warning/5 flex items-center gap-3"
+          >
+            <Wallet className="h-5 w-5 text-warning" />
+            <div className="flex-1">
+              <p className="text-sm font-medium">Wallet not connected</p>
+              <p className="text-xs text-muted-foreground">Connect your wallet to create an auction</p>
+            </div>
+            <Button variant="outline" size="sm" onClick={() => openConnectModal?.()}>
+              Connect
+            </Button>
+          </motion.div>
+        )}
 
         {/* Stepper */}
         <div className="flex items-center gap-2 mb-10">
@@ -93,7 +230,7 @@ const CreateAuction = () => {
               <div className="space-y-4">
                 <div>
                   <Label htmlFor="collateral-token">Collateral Token</Label>
-                  <Select value={collateralToken} onValueChange={setCollateralToken}>
+                  <Select value={collateralToken} onValueChange={(v) => setCollateralToken(v as "WBTC" | "ETH")}>
                     <SelectTrigger className="mt-1.5 bg-input border-border">
                       <SelectValue />
                     </SelectTrigger>
@@ -103,7 +240,7 @@ const CreateAuction = () => {
                     </SelectContent>
                   </Select>
                   <p className="text-xs text-muted-foreground mt-1.5">
-                    Wallet: 0.0000 {collateralToken} | Deposited: 0.0000 {collateralToken}
+                    Wallet: 0.0000 {collateralToken} | Deposited: {depositedAmount} {collateralToken}
                   </p>
                 </div>
                 <div>
@@ -115,11 +252,46 @@ const CreateAuction = () => {
                     value={collateralAmount}
                     onChange={(e) => setCollateralAmount(e.target.value)}
                     className="mt-1.5 bg-input border-border font-mono-numbers"
+                    disabled={isDeposited}
                   />
                   <p className="text-xs text-muted-foreground mt-1.5 flex items-center gap-1">
                     <Info className="h-3 w-3" />
                     How much {collateralToken} to lock as collateral
                   </p>
+                </div>
+
+                {/* Approval & Deposit Flow */}
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleApprove}
+                    disabled={!collateralAmount || isApproved || isApproving || !isConnected}
+                    className="flex-1"
+                  >
+                    {isApproving ? (
+                      <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Approving...</>
+                    ) : isApproved ? (
+                      <><Check className="h-4 w-4 mr-2" /> Approved</>
+                    ) : (
+                      "1. Approve"
+                    )}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleDeposit}
+                    disabled={!isApproved || isDeposited || isDepositing}
+                    className="flex-1"
+                  >
+                    {isDepositing ? (
+                      <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Depositing...</>
+                    ) : isDeposited ? (
+                      <><Check className="h-4 w-4 mr-2" /> Deposited</>
+                    ) : (
+                      "2. Deposit"
+                    )}
+                  </Button>
                 </div>
               </div>
             </div>
@@ -130,7 +302,7 @@ const CreateAuction = () => {
               <div className="grid sm:grid-cols-2 gap-4">
                 <div>
                   <Label>Loan Token</Label>
-                  <Select value={loanToken} onValueChange={setLoanToken}>
+                  <Select value={loanToken} onValueChange={(v) => setLoanToken(v as "USDC" | "USDT")}>
                     <SelectTrigger className="mt-1.5 bg-input border-border">
                       <SelectValue />
                     </SelectTrigger>
@@ -212,10 +384,33 @@ const CreateAuction = () => {
               </label>
             </div>
 
+            {/* Validation Errors */}
+            {validationErrors.length > 0 && (
+              <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/20">
+                {validationErrors.map((error, i) => (
+                  <p key={i} className="text-sm text-destructive">{error}</p>
+                ))}
+              </div>
+            )}
+
             {/* Actions */}
             <div className="flex items-center gap-3">
-              <Button variant="gradient" size="lg" disabled={!isValid} className="flex-1 sm:flex-none">
-                Create Auction
+              <Button
+                variant="gradient"
+                size="lg"
+                disabled={!isValid || !isDeposited || validationErrors.length > 0 || isCreating || !isConnected}
+                onClick={handleCreateAuction}
+                className="flex-1 sm:flex-none"
+              >
+                {isCreating ? (
+                  <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Creating Auction...</>
+                ) : !isConnected ? (
+                  "Connect Wallet"
+                ) : !isDeposited ? (
+                  "Deposit Collateral First"
+                ) : (
+                  "Create Auction"
+                )}
               </Button>
               <Button variant="outline" size="lg" asChild>
                 <Link to="/">Cancel</Link>
@@ -256,6 +451,16 @@ const CreateAuction = () => {
                   <span className="text-muted-foreground">Collateral</span>
                   <span className="font-mono-numbers font-medium">
                     {collateralAmount ? `${collateralAmount} ${collateralToken}` : "—"}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Deposited</span>
+                  <span className={`font-mono-numbers font-medium ${isDeposited ? "text-success" : ""}`}>
+                    {isDeposited ? (
+                      <><Check className="h-3 w-3 inline mr-1" />{depositedAmount} {collateralToken}</>
+                    ) : (
+                      "Not yet"
+                    )}
                   </span>
                 </div>
                 <div className="flex justify-between">

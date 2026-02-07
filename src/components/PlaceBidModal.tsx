@@ -1,4 +1,6 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
+import { useAccount, useBalance } from "wagmi";
+import { useConnectModal } from "@rainbow-me/rainbowkit";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -10,39 +12,99 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { AlertTriangle, CheckCircle2, XCircle } from "lucide-react";
+import { AlertTriangle, CheckCircle2, XCircle, Loader2 } from "lucide-react";
+import { useAuctionStore } from "@/store/useAuctionStore";
+import * as contracts from "@/lib/mockContracts";
+import type { Auction } from "@/types";
 
 interface PlaceBidModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  auction: {
-    id: string;
-    collateral: string;
-    loanAmount: string;
-    currentBid: string;
-    currentBidder: string;
-    maxRepayment: string;
-  };
+  auction: Auction;
 }
 
 const PlaceBidModal = ({ open, onOpenChange, auction }: PlaceBidModalProps) => {
+  const { address, isConnected } = useAccount();
+  const { openConnectModal } = useConnectModal();
+  const placeBid = useAuctionStore((state) => state.placeBid);
+
   const [bidAmount, setBidAmount] = useState("");
+  const [isApproving, setIsApproving] = useState(false);
   const [isApproved, setIsApproved] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const currentBidNum = parseFloat(auction.currentBid.replace(/,/g, ""));
-  const loanAmountNum = parseFloat(auction.loanAmount.replace(/,/g, ""));
+  // Get USDC balance (mock for demo)
+  const { data: balance } = useBalance({
+    address,
+    // Use USDC address for Arbitrum Sepolia
+    token: "0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d",
+  });
+
+  const userBalance = balance ? parseFloat(balance.formatted) : 100000; // Mock 100k for demo
+
+  const currentBidNum = auction.currentBid ? parseFloat(auction.currentBid) : parseFloat(auction.maxRepayment);
+  const loanAmountNum = parseFloat(auction.loanAmount);
   const bidNum = parseFloat(bidAmount) || 0;
 
-  const isValidBid = bidNum > 0 && bidNum >= loanAmountNum && bidNum < currentBidNum;
-  const isBetter = bidNum > 0 && bidNum < currentBidNum;
-  const interest = bidNum > 0 && loanAmountNum > 0 ? ((bidNum - loanAmountNum) / loanAmountNum * 100).toFixed(1) : null;
-  const profit = bidNum > 0 ? (bidNum - loanAmountNum).toFixed(0) : null;
-  const roi = bidNum > 0 && loanAmountNum > 0 ? ((bidNum - loanAmountNum) / bidNum * 100).toFixed(1) : null;
+  // Validation
+  const validation = useMemo(() => {
+    if (!bidAmount || bidNum <= 0) {
+      return { valid: false, message: "Enter a bid amount" };
+    }
+    if (bidNum < loanAmountNum) {
+      return { valid: false, message: `Bid must be at least ${loanAmountNum.toLocaleString()} ${auction.loanToken}` };
+    }
+    if (bidNum >= currentBidNum) {
+      return { valid: false, message: `Bid must be lower than current bid (${currentBidNum.toLocaleString()})` };
+    }
+    if (bidNum > userBalance) {
+      return { valid: false, message: "Insufficient balance" };
+    }
+    return { valid: true, message: "Your bid wins!" };
+  }, [bidAmount, bidNum, loanAmountNum, currentBidNum, userBalance, auction.loanToken]);
 
-  const handleSubmit = () => {
+  // Calculate returns
+  const interest = bidNum >= loanAmountNum ? ((bidNum - loanAmountNum) / loanAmountNum * 100).toFixed(1) : null;
+  const profit = bidNum >= loanAmountNum ? (bidNum - loanAmountNum).toFixed(0) : null;
+  const roi = bidNum >= loanAmountNum ? ((bidNum - loanAmountNum) / bidNum * 100).toFixed(1) : null;
+
+  const handleApprove = async () => {
+    if (!isConnected) {
+      openConnectModal?.();
+      return;
+    }
+
+    setIsApproving(true);
+    try {
+      await contracts.approveToken(auction.loanToken, "AuctionHouse", bidAmount);
+      setIsApproved(true);
+    } catch (error) {
+      console.error("Approval failed:", error);
+    } finally {
+      setIsApproving(false);
+    }
+  };
+
+  const handleSubmit = async () => {
+    if (!isConnected || !address) {
+      openConnectModal?.();
+      return;
+    }
+
+    if (!validation.valid) return;
+
     setIsSubmitting(true);
-    setTimeout(() => setIsSubmitting(false), 2000);
+    try {
+      await placeBid(auction.id, bidAmount, address);
+      onOpenChange(false);
+      // Reset state
+      setBidAmount("");
+      setIsApproved(false);
+    } catch (error) {
+      console.error("Bid failed:", error);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -58,23 +120,37 @@ const PlaceBidModal = ({ open, onOpenChange, auction }: PlaceBidModalProps) => {
           <div className="rounded-lg bg-secondary/50 p-4 space-y-2.5 text-sm">
             <div className="flex justify-between">
               <span className="text-muted-foreground">Collateral</span>
-              <span className="font-mono-numbers font-medium">{auction.collateral}</span>
+              <span className="font-mono-numbers font-medium">
+                {auction.collateralAmount} {auction.collateralToken}
+              </span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Loan Amount</span>
-              <span className="font-mono-numbers font-medium">{auction.loanAmount}</span>
+              <span className="font-mono-numbers font-medium">
+                {parseFloat(auction.loanAmount).toLocaleString()} {auction.loanToken}
+              </span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Current Best Bid</span>
-              <span className="font-mono-numbers font-medium">{auction.currentBid}</span>
+              <span className="font-mono-numbers font-medium">
+                {auction.currentBid
+                  ? `${parseFloat(auction.currentBid).toLocaleString()} ${auction.loanToken}`
+                  : `${parseFloat(auction.maxRepayment).toLocaleString()} ${auction.loanToken} (max)`}
+              </span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Best Bidder</span>
-              <span className="font-mono-numbers text-xs">{auction.currentBidder}</span>
-            </div>
+            {auction.currentBidder && (
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Best Bidder</span>
+                <span className="font-mono-numbers text-xs">
+                  {auction.currentBidder.slice(0, 6)}...{auction.currentBidder.slice(-4)}
+                </span>
+              </div>
+            )}
             <div className="flex justify-between">
               <span className="text-muted-foreground">Your Wallet</span>
-              <span className="font-mono-numbers font-medium text-accent">100,000 USDC</span>
+              <span className="font-mono-numbers font-medium text-accent">
+                {userBalance.toLocaleString()} {auction.loanToken}
+              </span>
             </div>
           </div>
 
@@ -89,17 +165,17 @@ const PlaceBidModal = ({ open, onOpenChange, auction }: PlaceBidModalProps) => {
               className="bg-input border-border font-mono-numbers text-lg h-12"
             />
             <p className="text-xs text-muted-foreground mt-1.5">
-              Lower = Better for Borrower | Min: {auction.loanAmount}
+              Lower = Better for Borrower | Min: {loanAmountNum.toLocaleString()} {auction.loanToken}
             </p>
             {bidNum > 0 && (
               <div className="mt-2">
-                {isBetter ? (
+                {validation.valid ? (
                   <span className="flex items-center gap-1.5 text-sm text-success">
-                    <CheckCircle2 className="h-4 w-4" /> Your bid wins!
+                    <CheckCircle2 className="h-4 w-4" /> {validation.message}
                   </span>
                 ) : (
                   <span className="flex items-center gap-1.5 text-sm text-destructive">
-                    <XCircle className="h-4 w-4" /> Must be lower than current bid
+                    <XCircle className="h-4 w-4" /> {validation.message}
                   </span>
                 )}
               </div>
@@ -107,7 +183,7 @@ const PlaceBidModal = ({ open, onOpenChange, auction }: PlaceBidModalProps) => {
           </div>
 
           {/* Calculations */}
-          {bidNum > 0 && (
+          {bidNum >= loanAmountNum && (
             <div className="rounded-lg border border-border p-4 space-y-2 text-sm">
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Interest Rate</span>
@@ -116,7 +192,7 @@ const PlaceBidModal = ({ open, onOpenChange, auction }: PlaceBidModalProps) => {
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Your Profit</span>
                 <span className="font-mono-numbers font-medium">
-                  {Number(profit).toLocaleString()} USDC
+                  {Number(profit).toLocaleString()} {auction.loanToken}
                 </span>
               </div>
               <div className="flex justify-between">
@@ -127,20 +203,32 @@ const PlaceBidModal = ({ open, onOpenChange, auction }: PlaceBidModalProps) => {
           )}
 
           {/* Approval */}
-          {!isApproved && (
+          {!isApproved && isConnected && (
             <div className="rounded-lg border border-warning/30 bg-warning/5 p-4 flex items-start gap-3">
               <AlertTriangle className="h-5 w-5 text-warning shrink-0 mt-0.5" />
               <div>
-                <p className="text-sm font-medium">First, approve USDC spending</p>
+                <p className="text-sm font-medium">First, approve {auction.loanToken} spending</p>
                 <Button
                   variant="outline"
                   size="sm"
                   className="mt-2"
-                  onClick={() => setIsApproved(true)}
+                  onClick={handleApprove}
+                  disabled={isApproving || !bidAmount}
                 >
-                  Approve USDC
+                  {isApproving ? (
+                    <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Approving...</>
+                  ) : (
+                    `Approve ${auction.loanToken}`
+                  )}
                 </Button>
               </div>
+            </div>
+          )}
+
+          {isApproved && (
+            <div className="rounded-lg border border-success/30 bg-success/5 p-3 flex items-center gap-2">
+              <CheckCircle2 className="h-4 w-4 text-success" />
+              <span className="text-sm text-success">{auction.loanToken} approved for spending</span>
             </div>
           )}
         </div>
@@ -151,10 +239,16 @@ const PlaceBidModal = ({ open, onOpenChange, auction }: PlaceBidModalProps) => {
           </Button>
           <Button
             variant="gradient"
-            disabled={!isValidBid || !isApproved || isSubmitting}
+            disabled={!validation.valid || !isApproved || isSubmitting || !isConnected}
             onClick={handleSubmit}
           >
-            {isSubmitting ? "Submitting..." : "Submit Bid"}
+            {isSubmitting ? (
+              <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Submitting...</>
+            ) : !isConnected ? (
+              "Connect Wallet"
+            ) : (
+              "Submit Bid"
+            )}
           </Button>
         </DialogFooter>
       </DialogContent>
