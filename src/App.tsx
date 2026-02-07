@@ -7,6 +7,9 @@ import Index from "./pages/Index";
 import CreateAuction from "./pages/CreateAuction";
 import OpenAuctions from "./pages/OpenAuctions";
 import ActiveLoans from "./pages/ActiveLoans";
+import Marketplace from "./pages/Marketplace";
+import NFTLending from "./pages/NFTLending";
+import Analytics from "./pages/Analytics";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -22,6 +25,9 @@ const App = () => (
           <Route path="/create-auction" element={<CreateAuction />} />
           <Route path="/auctions" element={<OpenAuctions />} />
           <Route path="/loans" element={<ActiveLoans />} />
+          <Route path="/marketplace" element={<Marketplace />} />
+          <Route path="/nft-lending" element={<NFTLending />} />
+          <Route path="/analytics" element={<Analytics />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>
