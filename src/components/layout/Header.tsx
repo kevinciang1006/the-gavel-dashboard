@@ -5,7 +5,10 @@ import { Wallet } from "lucide-react";
 const navItems = [
   { label: "Dashboard", path: "/" },
   { label: "Auctions", path: "/auctions" },
-  { label: "Active Loans", path: "/loans" },
+  { label: "Loans", path: "/loans" },
+  { label: "Marketplace", path: "/marketplace" },
+  { label: "NFT", path: "/nft-lending" },
+  { label: "Analytics", path: "/analytics" },
 ];
 
 const Header = () => {
