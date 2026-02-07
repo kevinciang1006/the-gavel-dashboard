@@ -21,7 +21,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { motion } from "framer-motion";
-import { Search, Filter, RefreshCw, Clock, Gavel, Plus } from "lucide-react";
+import { Search, Filter, RefreshCw, Clock, Gavel, Plus, User, Loader2 } from "lucide-react";
+import { toast } from "sonner";
 import { Link } from "react-router-dom";
 import { useAuctionStore } from "@/store/useAuctionStore";
 import type { Auction } from "@/types";
@@ -57,9 +58,10 @@ function getTokenIcon(token: string): string {
 }
 
 const OpenAuctions = () => {
-  const { isConnected } = useWallet();
+  const { address, isConnected } = useWallet();
   const allAuctions = useAuctionStore((state) => state.auctions);
   const updateAuctionStatuses = useAuctionStore((state) => state.updateAuctionStatuses);
+  const finalizeAuction = useAuctionStore((state) => state.finalizeAuction);
 
   // Filter active auctions (memoized to avoid infinite loop)
   const auctions = useMemo(() => {
@@ -73,7 +75,37 @@ const OpenAuctions = () => {
   const [timeFilter, setTimeFilter] = useState("All");
   const [showFilters, setShowFilters] = useState(false);
   const [selectedAuction, setSelectedAuction] = useState<Auction | null>(null);
+  const [finalizingId, setFinalizingId] = useState<string | null>(null);
   const [, setTick] = useState(0);
+
+  // Check if current user owns an auction
+  const isOwner = (auction: Auction) => {
+    if (!address) return false;
+    return auction.borrower.toLowerCase() === address.toLowerCase();
+  };
+
+  const handleFinalize = async (auction: Auction) => {
+    if (!isOwner(auction)) {
+      toast.error("Only the auction creator can finalize");
+      return;
+    }
+    if (!auction.currentBid) {
+      toast.error("No bids to finalize");
+      return;
+    }
+
+    setFinalizingId(auction.id);
+    try {
+      await finalizeAuction(auction.id);
+      toast.success("Auction finalized!", {
+        description: `Loan created from winning bid`,
+      });
+    } catch (error) {
+      console.error("Finalize failed:", error);
+    } finally {
+      setFinalizingId(null);
+    }
+  };
 
   // Update countdown timers every second
   useEffect(() => {
@@ -230,6 +262,7 @@ const OpenAuctions = () => {
                 {filtered.map((auction) => {
                   const timeLeft = formatTimeLeft(auction.auctionEndTime);
                   const isEndingSoon = auction.status === "ending_soon";
+                  const isAuctionOwner = isOwner(auction);
                   const interestRate = auction.currentBid
                     ? ((parseFloat(auction.currentBid) - parseFloat(auction.loanAmount)) / parseFloat(auction.loanAmount) * 100).toFixed(1)
                     : ((parseFloat(auction.maxRepayment) - parseFloat(auction.loanAmount)) / parseFloat(auction.loanAmount) * 100).toFixed(1);
@@ -237,10 +270,17 @@ const OpenAuctions = () => {
                   return (
                     <TableRow
                       key={auction.id}
-                      className="border-border hover:bg-secondary/30 transition-colors cursor-pointer"
+                      className={`border-border hover:bg-secondary/30 transition-colors cursor-pointer ${isAuctionOwner ? "bg-primary/5" : ""}`}
                     >
                       <TableCell>
-                        <Badge variant="muted" className="font-mono-numbers">{auction.id}</Badge>
+                        <div className="flex items-center gap-2">
+                          <Badge variant="muted" className="font-mono-numbers">{auction.id}</Badge>
+                          {isAuctionOwner && (
+                            <Badge variant="accent" className="text-[10px] gap-1">
+                              <User className="h-3 w-3" /> Yours
+                            </Badge>
+                          )}
+                        </div>
                       </TableCell>
                       <TableCell>
                         <span className="flex items-center gap-2">
@@ -281,14 +321,29 @@ const OpenAuctions = () => {
                         </Badge>
                       </TableCell>
                       <TableCell className="text-right">
-                        <Button
-                          variant="gradient"
-                          size="sm"
-                          onClick={() => setSelectedAuction(auction)}
-                          disabled={!isConnected}
-                        >
-                          {isConnected ? "Place Bid" : "Connect"}
-                        </Button>
+                        {isAuctionOwner ? (
+                          <Button
+                            variant="accent"
+                            size="sm"
+                            onClick={() => handleFinalize(auction)}
+                            disabled={!auction.currentBid || finalizingId === auction.id}
+                          >
+                            {finalizingId === auction.id ? (
+                              <><Loader2 className="h-3 w-3 mr-1 animate-spin" /> Finalizing</>
+                            ) : (
+                              "Finalize"
+                            )}
+                          </Button>
+                        ) : (
+                          <Button
+                            variant="gradient"
+                            size="sm"
+                            onClick={() => setSelectedAuction(auction)}
+                            disabled={!isConnected}
+                          >
+                            {isConnected ? "Place Bid" : "Connect"}
+                          </Button>
+                        )}
                       </TableCell>
                     </TableRow>
                   );

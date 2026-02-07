@@ -21,6 +21,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import CreateNFTAuctionModal from "@/components/CreateNFTAuctionModal";
+import ViewBidsModal from "@/components/ViewBidsModal";
 import { motion } from "framer-motion";
 import {
   Info,
@@ -131,6 +132,7 @@ const NFTLending = () => {
   const [activeTab, setActiveTab] = useState("collection");
   const [loanRoleFilter, setLoanRoleFilter] = useState<"all" | "borrower" | "lender">("all");
   const [auctionNFT, setAuctionNFT] = useState<NFT | null>(null);
+  const [viewBidsAuction, setViewBidsAuction] = useState<typeof activeAuctions[0] | null>(null);
   const [nftFilter, setNftFilter] = useState("All");
   const [isMinting, setIsMinting] = useState(false);
   const [userNFTs, setUserNFTs] = useState<NFT[]>(sampleNFTs);
@@ -460,7 +462,13 @@ const NFTLending = () => {
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex gap-1.5 justify-end">
-                            <Button variant="outline" size="sm">View Bids</Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setViewBidsAuction(auction)}
+                            >
+                              View Bids
+                            </Button>
                             <Button
                               variant="gradient"
                               size="sm"
@@ -609,6 +617,15 @@ const NFTLending = () => {
           open={!!auctionNFT}
           onOpenChange={(open) => !open && setAuctionNFT(null)}
           nft={auctionNFT}
+        />
+      )}
+
+      {/* View Bids Modal */}
+      {viewBidsAuction && (
+        <ViewBidsModal
+          open={!!viewBidsAuction}
+          onOpenChange={(open) => !open && setViewBidsAuction(null)}
+          auction={viewBidsAuction}
         />
       )}
     </div>

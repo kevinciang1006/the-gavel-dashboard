@@ -201,6 +201,11 @@ const ActiveLoans = () => {
 			openConnectModal?.();
 			return;
 		}
+		// Only borrower can repay
+		if (!address || loan.borrower.toLowerCase() !== address.toLowerCase()) {
+			toast.error("Only the borrower can repay this loan");
+			return;
+		}
 		setSelectedLoan(loan);
 		setActionType("repay");
 	};
@@ -208,6 +213,11 @@ const ActiveLoans = () => {
 	const handleClaim = (loan: Loan) => {
 		if (!isConnected) {
 			openConnectModal?.();
+			return;
+		}
+		// Only lender can claim
+		if (!address || loan.lender.toLowerCase() !== address.toLowerCase()) {
+			toast.error("Only the lender can claim collateral");
 			return;
 		}
 		setSelectedLoan(loan);

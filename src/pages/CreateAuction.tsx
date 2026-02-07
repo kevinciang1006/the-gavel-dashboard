@@ -16,9 +16,10 @@ import {
 	SelectValue,
 } from "@/components/ui/select";
 import { motion } from "framer-motion";
-import { ArrowLeft, Check, Info, Loader2, Wallet } from "lucide-react";
+import { ArrowLeft, Check, Info, Loader2, Wallet, AlertCircle } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useAuctionStore } from "@/store/useAuctionStore";
+import { useDemoWalletStore } from "@/store/useDemoWalletStore";
 import * as contracts from "@/lib/mockContracts";
 
 const steps = [
@@ -29,9 +30,10 @@ const steps = [
 
 const CreateAuction = () => {
 	const navigate = useNavigate();
-	const { address, isConnected } = useWallet();
+	const { address, isConnected, isDemoMode } = useWallet();
 	const { openConnectModal } = useConnectModal();
 	const createAuction = useAuctionStore((state) => state.createAuction);
+	const demoBalances = useDemoWalletStore((state) => state.demoBalances);
 
 	// Form state
 	const [collateralToken, setCollateralToken] = useState<"WBTC" | "ETH">(
@@ -89,6 +91,18 @@ const CreateAuction = () => {
 			return (((repay - loan) / loan) * 100).toFixed(1);
 		return null;
 	}, [loanAmount, maxRepayment]);
+
+	// Get wallet balance for selected collateral token
+	const walletBalance = useMemo(() => {
+		if (isDemoMode) {
+			return parseFloat(demoBalances[collateralToken] || "0");
+		}
+		// For real wallet, mock balance for demo purposes
+		return collateralToken === "WBTC" ? 2.5 : 15.0;
+	}, [isDemoMode, demoBalances, collateralToken]);
+
+	const collateralAmountNum = parseFloat(collateralAmount) || 0;
+	const hasInsufficientBalance = collateralAmountNum > walletBalance;
 
 	// Validation
 	const validationErrors = useMemo(() => {
@@ -312,7 +326,7 @@ const CreateAuction = () => {
 										</SelectContent>
 									</Select>
 									<p className="text-xs text-muted-foreground mt-1.5">
-										Wallet: 0.0000 {collateralToken} |
+										Wallet: {walletBalance.toFixed(4)} {collateralToken} |
 										Deposited: {depositedAmount}{" "}
 										{collateralToken}
 									</p>
@@ -337,6 +351,12 @@ const CreateAuction = () => {
 										How much {collateralToken} to lock as
 										collateral
 									</p>
+									{hasInsufficientBalance && collateralAmountNum > 0 && (
+										<p className="text-xs text-destructive mt-1.5 flex items-center gap-1">
+											<AlertCircle className="h-3 w-3" />
+											Insufficient balance. You have {walletBalance.toFixed(4)} {collateralToken}
+										</p>
+									)}
 								</div>
 
 								{/* Approval & Deposit Flow */}
@@ -374,7 +394,8 @@ const CreateAuction = () => {
 										disabled={
 											!isApproved ||
 											isDeposited ||
-											isDepositing
+											isDepositing ||
+											hasInsufficientBalance
 										}
 										className="flex-1"
 									>

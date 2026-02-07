@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import Header from "@/components/layout/Header";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -48,6 +48,9 @@ import {
   Activity,
   ExternalLink,
 } from "lucide-react";
+import { useAuctionStore } from "@/store/useAuctionStore";
+import { useLoanStore } from "@/store/useLoanStore";
+import { useMarketplaceStore } from "@/store/useMarketplaceStore";
 
 // KPI Data
 const kpis = [
@@ -177,6 +180,100 @@ const yieldCurveConfig = {
 const Analytics = () => {
   const [dateRange, setDateRange] = useState("7d");
 
+  // Get data from stores
+  const auctions = useAuctionStore((state) => state.auctions);
+  const loans = useLoanStore((state) => state.loans);
+  const listings = useMarketplaceStore((state) => state.listings);
+
+  // Calculate dynamic KPIs
+  const dynamicKpis = useMemo(() => {
+    // Total Volume: sum of all loan amounts
+    const totalVolume = loans.reduce((sum, l) => sum + parseFloat(l.loanAmount), 0);
+
+    // Active Loans count
+    const activeLoansCount = loans.filter(l => l.status === "active" || l.status === "grace_period").length;
+
+    // Total Value Locked (collateral in active loans + auctions)
+    const auctionTVL = auctions
+      .filter(a => a.status === "active" || a.status === "ending_soon")
+      .reduce((sum, a) => {
+        const amount = parseFloat(a.collateralAmount);
+        // Rough USD conversion: WBTC ~$60k, ETH ~$3k
+        const usdValue = a.collateralToken === "WBTC" ? amount * 60000 : amount * 3000;
+        return sum + usdValue;
+      }, 0);
+    const loanTVL = loans
+      .filter(l => l.status === "active" || l.status === "grace_period")
+      .reduce((sum, l) => {
+        const amount = parseFloat(l.collateralAmount);
+        const usdValue = l.collateralToken === "WBTC" ? amount * 60000 : amount * 3000;
+        return sum + usdValue;
+      }, 0);
+    const tvl = auctionTVL + loanTVL;
+
+    // Average APR across all loans
+    const avgApr = loans.length > 0
+      ? loans.reduce((sum, l) => {
+          const interest = parseFloat(l.repaymentAmount) - parseFloat(l.loanAmount);
+          const apr = (interest / parseFloat(l.loanAmount)) * 100;
+          return sum + apr;
+        }, 0) / loans.length
+      : 0;
+
+    return [
+      {
+        label: "Total Volume",
+        value: `$${(totalVolume / 1000).toFixed(0)}K`,
+        change: "+12.5%",
+        positive: true,
+        icon: DollarSign,
+        sparkline: [30, 45, 35, 50, 40, 60, 55, 70, 65, 80, 75, Math.round(totalVolume / 1000)],
+      },
+      {
+        label: "Active Loans",
+        value: activeLoansCount.toString(),
+        change: "+8.3%",
+        positive: true,
+        icon: Activity,
+        sparkline: [10, 12, 11, 15, 14, 16, 18, 17, 20, 19, 22, activeLoansCount],
+      },
+      {
+        label: "Total Value Locked",
+        value: tvl >= 1000000 ? `$${(tvl / 1000000).toFixed(2)}M` : `$${(tvl / 1000).toFixed(0)}K`,
+        change: "+5.2%",
+        positive: true,
+        icon: Lock,
+        sparkline: [200, 220, 240, 230, 260, 280, 290, 310, 300, 330, 340, Math.round(tvl / 10000)],
+      },
+      {
+        label: "Average APR",
+        value: `${avgApr.toFixed(1)}%`,
+        change: "-1.2%",
+        positive: false,
+        icon: Percent,
+        sparkline: [12, 11.5, 11, 10.8, 10.5, 10.2, 10, 9.8, 9.7, 9.6, 9.5, avgApr],
+      },
+    ];
+  }, [auctions, loans]);
+
+  // Calculate volume by collateral type from actual loans
+  const dynamicVolumeByCollateral = useMemo(() => {
+    const wbtcVolume = loans
+      .filter(l => l.collateralToken === "WBTC")
+      .reduce((sum, l) => sum + parseFloat(l.loanAmount), 0);
+    const ethVolume = loans
+      .filter(l => l.collateralToken === "ETH")
+      .reduce((sum, l) => sum + parseFloat(l.loanAmount), 0);
+    const total = wbtcVolume + ethVolume;
+
+    if (total === 0) return volumeByCollateral; // Use mock data if no loans
+
+    return [
+      { name: "WBTC", value: wbtcVolume, color: "hsl(263, 90%, 66%)" },
+      { name: "ETH", value: ethVolume, color: "hsl(189, 94%, 43%)" },
+    ];
+  }, [loans]);
+
   return (
     <div className="min-h-screen bg-background">
       <Header />
@@ -202,7 +299,7 @@ const Analytics = () => {
 
         {/* KPI Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-          {kpis.map((kpi, i) => (
+          {dynamicKpis.map((kpi, i) => (
             <motion.div
               key={kpi.label}
               initial={{ opacity: 0, y: 12 }}
@@ -298,7 +395,7 @@ const Analytics = () => {
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
                     <Pie
-                      data={volumeByCollateral}
+                      data={dynamicVolumeByCollateral}
                       cx="50%"
                       cy="50%"
                       innerRadius={60}
@@ -307,7 +404,7 @@ const Analytics = () => {
                       dataKey="value"
                       label={({ name, value }) => `${name}: $${(value / 1000).toFixed(0)}K`}
                     >
-                      {volumeByCollateral.map((entry, index) => (
+                      {dynamicVolumeByCollateral.map((entry, index) => (
                         <Cell key={index} fill={entry.color} stroke="transparent" />
                       ))}
                     </Pie>
