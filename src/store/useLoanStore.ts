@@ -75,6 +75,78 @@ const initialLoans: Loan[] = [
     lenderNftId: "NFT-10006",
     txHash: "0x789abc123def456789abc123def456789abc123def456789abc123def456789a",
   },
+  {
+    id: "L2004",
+    auctionId: "#0995",
+    borrower: CHARLIE, // Charlie defaulted
+    lender: ALICE, // Alice can claim
+    collateralToken: "ETH",
+    collateralAmount: "15",
+    loanToken: "USDC",
+    loanAmount: "45000",
+    repaymentAmount: "48000",
+    startTime: Date.now() - 35 * 24 * 60 * 60 * 1000, // 35 days ago
+    maturityTime: Date.now() - 5 * 24 * 60 * 60 * 1000, // 5 days overdue
+    gracePeriodEnd: Date.now() - 2 * 24 * 60 * 60 * 1000, // Grace ended 2 days ago
+    status: "defaulted",
+    borrowerNftId: "NFT-10007",
+    lenderNftId: "NFT-10008",
+    txHash: "0x89abc123def456789abc123def456789abc123def456789abc123def456789ab",
+  },
+  {
+    id: "L2005",
+    auctionId: "#0994",
+    borrower: BOB, // Bob defaulted
+    lender: CHARLIE, // Charlie can claim
+    collateralToken: "WBTC",
+    collateralAmount: "0.4",
+    loanToken: "USDC",
+    loanAmount: "25000",
+    repaymentAmount: "26500",
+    startTime: Date.now() - 10 * 24 * 60 * 60 * 1000, // 10 days ago (short loan)
+    maturityTime: Date.now() - 2 * 24 * 60 * 60 * 1000, // 2 days overdue
+    gracePeriodEnd: Date.now() - 5 * 60 * 60 * 1000, // Grace ended 5 hours ago
+    status: "defaulted",
+    borrowerNftId: "NFT-10009",
+    lenderNftId: "NFT-10010",
+    txHash: "0x9abc123def456789abc123def456789abc123def456789abc123def456789abc",
+  },
+  {
+    id: "L2004",
+    auctionId: "#0995",
+    borrower: CHARLIE, // Charlie defaulted
+    lender: ALICE, // Alice can claim
+    collateralToken: "ETH",
+    collateralAmount: "15",
+    loanToken: "USDC",
+    loanAmount: "45000",
+    repaymentAmount: "48000",
+    startTime: Date.now() - 35 * 24 * 60 * 60 * 1000, // 35 days ago
+    maturityTime: Date.now() - 5 * 24 * 60 * 60 * 1000, // 5 days overdue
+    gracePeriodEnd: Date.now() - 2 * 24 * 60 * 60 * 1000, // Grace ended 2 days ago
+    status: "defaulted",
+    borrowerNftId: "NFT-10007",
+    lenderNftId: "NFT-10008",
+    txHash: "0x89abc123def456789abc123def456789abc123def456789abc123def456789ab",
+  },
+  {
+    id: "L2005",
+    auctionId: "#0994",
+    borrower: BOB, // Bob defaulted
+    lender: CHARLIE, // Charlie can claim
+    collateralToken: "WBTC",
+    collateralAmount: "0.4",
+    loanToken: "USDC",
+    loanAmount: "25000",
+    repaymentAmount: "26500",
+    startTime: Date.now() - 10 * 24 * 60 * 60 * 1000, // 10 days ago (short loan)
+    maturityTime: Date.now() - 2 * 24 * 60 * 60 * 1000, // 2 days overdue
+    gracePeriodEnd: Date.now() - 5 * 60 * 60 * 1000, // Grace ended 5 hours ago
+    status: "defaulted",
+    borrowerNftId: "NFT-10009",
+    lenderNftId: "NFT-10010",
+    txHash: "0x9abc123def456789abc123def456789abc123def456789abc123def456789abc",
+  },
 ];
 
 interface LoanStore {
@@ -151,7 +223,7 @@ export const useLoanStore = create<LoanStore>((set, get) => ({
 
       // Track analytics event
       if (loan) {
-        analytics.loanRepaid(loanId, loan.repaymentAmount);
+        analytics.loanRepaid(loanId, loan.repaymentAmount, loan.borrower);
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to repay loan";
@@ -164,6 +236,7 @@ export const useLoanStore = create<LoanStore>((set, get) => ({
     set({ isLoading: true, error: null });
 
     try {
+      const loan = get().loans.find((l) => l.id === loanId);
       await contracts.claimCollateral(loanId);
 
       set((state) => ({
@@ -174,6 +247,11 @@ export const useLoanStore = create<LoanStore>((set, get) => ({
         ),
         isLoading: false,
       }));
+
+      // Track analytics
+      if (loan) {
+        analytics.collateralClaimed(loanId, loan.collateralAmount, loan.lender);
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to claim collateral";
       set({ error: message, isLoading: false });

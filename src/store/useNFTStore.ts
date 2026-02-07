@@ -333,7 +333,7 @@ export const useNFTStore = create<NFTStore>((set, get) => ({
         isLoading: false,
       }));
 
-      analytics.nftMinted(newNFT.collection, newNFT.tokenId);
+      analytics.nftMinted(newNFT.collection, newNFT.tokenId, owner);
 
       return newNFT;
     } catch (error) {
@@ -400,7 +400,7 @@ export const useNFTStore = create<NFTStore>((set, get) => ({
         isLoading: false,
       }));
 
-      analytics.auctionCreated("NFT", params.loanToken, params.loanAmount);
+      analytics.auctionCreated("NFT", params.loanToken, params.loanAmount, params.borrower);
 
       return newAuction;
     } catch (error) {
@@ -443,18 +443,18 @@ export const useNFTStore = create<NFTStore>((set, get) => ({
         auctions: state.auctions.map((a) =>
           a.id === auctionId
             ? {
-                ...a,
-                currentBid: bidAmount,
-                currentBidder: bidder.toLowerCase(),
-                bids: [newBid, ...a.bids],
-                bidCount: a.bidCount + 1,
-              }
+              ...a,
+              currentBid: bidAmount,
+              currentBidder: bidder.toLowerCase(),
+              bids: [newBid, ...a.bids],
+              bidCount: a.bidCount + 1,
+            }
             : a
         ),
         isLoading: false,
       }));
 
-      analytics.bidPlaced(auctionId, bidAmount);
+      analytics.bidPlaced(auctionId, bidAmount, bidder);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to place bid";
       set({ error: message, isLoading: false });
@@ -507,6 +507,11 @@ export const useNFTStore = create<NFTStore>((set, get) => ({
         isLoading: false,
       }));
 
+      // Track analytics
+      if (auction.currentBid && auction.currentBidder) {
+        analytics.auctionFinalized(auctionId, auction.currentBid, auction.currentBidder);
+      }
+
       return newLoan;
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to finalize auction";
@@ -553,7 +558,7 @@ export const useNFTStore = create<NFTStore>((set, get) => ({
   getUserAuctions: (address) => {
     return get().auctions.filter(
       (a) => a.borrower.toLowerCase() === address.toLowerCase() &&
-             (a.status === "active" || a.status === "ending_soon" || a.status === "ended")
+        (a.status === "active" || a.status === "ending_soon" || a.status === "ended")
     );
   },
 
@@ -622,7 +627,7 @@ export const useNFTStore = create<NFTStore>((set, get) => ({
         isLoading: false,
       }));
 
-      analytics.loanRepaid(loanId, loan.repaymentAmount);
+      analytics.loanRepaid(loanId, loan.repaymentAmount, loan.borrower);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to repay loan";
       set({ error: message, isLoading: false });
@@ -667,6 +672,11 @@ export const useNFTStore = create<NFTStore>((set, get) => ({
         nfts: [...state.nfts, claimedNFT],
         isLoading: false,
       }));
+
+      // Track analytics
+      if (loan) {
+        analytics.collateralClaimed(loanId, "NFT", loan.lender);
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to claim NFT";
       set({ error: message, isLoading: false });

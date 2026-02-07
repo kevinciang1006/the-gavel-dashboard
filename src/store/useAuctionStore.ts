@@ -2,6 +2,7 @@ import { create } from "zustand";
 import type { Auction, AuctionStatus } from "@/types";
 import * as contracts from "@/lib/mockContracts";
 import { analytics } from "@/lib/analytics";
+import { useLoanStore } from "./useLoanStore";
 import { DEMO_USERS } from "./useDemoWalletStore";
 
 // Demo addresses for consistency
@@ -171,7 +172,7 @@ export const useAuctionStore = create<AuctionStore>((set, get) => ({
       }));
 
       // Track analytics event
-      analytics.auctionCreated(params.collateralToken, params.loanToken, params.loanAmount);
+      analytics.auctionCreated(params.collateralToken, params.loanToken, params.loanAmount, borrower);
 
       return newAuction;
     } catch (error) {
@@ -191,18 +192,18 @@ export const useAuctionStore = create<AuctionStore>((set, get) => ({
         auctions: state.auctions.map((auction) =>
           auction.id === auctionId
             ? {
-                ...auction,
-                currentBid: bidAmount,
-                currentBidder: bidder,
-                bidCount: auction.bidCount + 1,
-              }
+              ...auction,
+              currentBid: bidAmount,
+              currentBidder: bidder,
+              bidCount: auction.bidCount + 1,
+            }
             : auction
         ),
         isLoading: false,
       }));
 
       // Track analytics event
-      analytics.bidPlaced(auctionId, bidAmount);
+      analytics.bidPlaced(auctionId, bidAmount, bidder);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to place bid";
       set({ error: message, isLoading: false });
@@ -215,6 +216,15 @@ export const useAuctionStore = create<AuctionStore>((set, get) => ({
 
     try {
       await contracts.finalizeAuction(auctionId);
+
+      // Create loan from finalized auction
+      const auction = get().auctions.find((a) => a.id === auctionId);
+      if (auction && auction.currentBid && auction.currentBidder) {
+        useLoanStore.getState().createLoanFromAuction(auction);
+
+        // Track analytics event
+        analytics.auctionFinalized(auctionId, auction.currentBid, auction.currentBidder);
+      }
 
       set((state) => ({
         auctions: state.auctions.map((auction) =>

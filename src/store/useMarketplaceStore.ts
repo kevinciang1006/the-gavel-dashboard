@@ -129,7 +129,7 @@ export const useMarketplaceStore = create<MarketplaceStore>((set, get) => ({
       }));
 
       // Track analytics event
-      analytics.positionListed(newListing.id, price, nftType);
+      analytics.positionListed(newListing.id, price, nftType, seller);
 
       return newListing;
     } catch (error) {
@@ -157,7 +157,8 @@ export const useMarketplaceStore = create<MarketplaceStore>((set, get) => ({
 
       // Track analytics event
       if (listing) {
-        analytics.positionBought(listingId, listing.price);
+        analytics.positionBought(listingId, listing.price, buyer);
+        analytics.positionSold(listingId, listing.price, listing.seller);
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to buy position";
