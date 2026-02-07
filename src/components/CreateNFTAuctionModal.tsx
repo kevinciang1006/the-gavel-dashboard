@@ -20,21 +20,19 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Loader2, Image as ImageIcon } from "lucide-react";
+import { useNFTStore, type NFT } from "@/store/useNFTStore";
 import * as contracts from "@/lib/mockContracts";
 
 interface CreateNFTAuctionModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  nft: {
-    collection: string;
-    tokenId: string;
-    image: string;
-  };
+  nft: NFT;
 }
 
 const CreateNFTAuctionModal = ({ open, onOpenChange, nft }: CreateNFTAuctionModalProps) => {
-  const { isConnected } = useWallet();
+  const { address, isConnected } = useWallet();
   const { openConnectModal } = useConnectModal();
+  const createNFTAuction = useNFTStore((state) => state.createNFTAuction);
 
   const [loanToken, setLoanToken] = useState<"USDC" | "USDT">("USDC");
   const [loanAmount, setLoanAmount] = useState("");
@@ -70,7 +68,7 @@ const CreateNFTAuctionModal = ({ open, onOpenChange, nft }: CreateNFTAuctionModa
   };
 
   const handleSubmit = async () => {
-    if (!isConnected) {
+    if (!isConnected || !address) {
       openConnectModal?.();
       return;
     }
@@ -79,11 +77,11 @@ const CreateNFTAuctionModal = ({ open, onOpenChange, nft }: CreateNFTAuctionModa
 
     setIsSubmitting(true);
     try {
-      await contracts.createAuction({
-        collateralToken: "ETH", // NFT is the collateral
-        collateralAmount: "1", // 1 NFT
-        loanToken,
+      await createNFTAuction({
+        nftId: nft.id,
+        borrower: address,
         loanAmount,
+        loanToken,
         maxRepayment,
         loanDuration,
         auctionDuration,
@@ -100,6 +98,7 @@ const CreateNFTAuctionModal = ({ open, onOpenChange, nft }: CreateNFTAuctionModa
       setIsApproved(false);
     } catch (error) {
       console.error("Create auction failed:", error);
+      toast.error("Failed to create auction");
     } finally {
       setIsSubmitting(false);
     }
@@ -175,7 +174,9 @@ const CreateNFTAuctionModal = ({ open, onOpenChange, nft }: CreateNFTAuctionModa
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="7d">7 days</SelectItem>
+                    <SelectItem value="14d">14 days</SelectItem>
                     <SelectItem value="30d">30 days</SelectItem>
+                    <SelectItem value="60d">60 days</SelectItem>
                     <SelectItem value="90d">90 days</SelectItem>
                   </SelectContent>
                 </Select>
@@ -189,6 +190,7 @@ const CreateNFTAuctionModal = ({ open, onOpenChange, nft }: CreateNFTAuctionModa
                   <SelectContent>
                     <SelectItem value="1h">1 hour</SelectItem>
                     <SelectItem value="6h">6 hours</SelectItem>
+                    <SelectItem value="12h">12 hours</SelectItem>
                     <SelectItem value="24h">24 hours</SelectItem>
                   </SelectContent>
                 </Select>
@@ -220,7 +222,7 @@ const CreateNFTAuctionModal = ({ open, onOpenChange, nft }: CreateNFTAuctionModa
             <div className="rounded-lg bg-primary/5 border border-primary/20 p-4 space-y-2 text-sm">
               <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">Summary</p>
               <div className="flex justify-between">
-                <span className="text-muted-foreground">Using</span>
+                <span className="text-muted-foreground">Collateral</span>
                 <span className="font-medium">{nft.collection} {nft.tokenId}</span>
               </div>
               <div className="flex justify-between">
@@ -237,6 +239,14 @@ const CreateNFTAuctionModal = ({ open, onOpenChange, nft }: CreateNFTAuctionModa
                   <span className="font-mono-numbers text-accent">~{apr}%</span>
                 </div>
               )}
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Loan Duration</span>
+                <span className="font-mono-numbers">{loanDuration}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Auction Duration</span>
+                <span className="font-mono-numbers">{auctionDuration}</span>
+              </div>
             </div>
           )}
         </div>

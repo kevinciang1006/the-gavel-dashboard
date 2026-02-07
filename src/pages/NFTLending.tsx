@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useWallet } from "@/hooks/useWallet";
 import { useConnectModal } from "@rainbow-me/rainbowkit";
 import { toast } from "sonner";
@@ -21,7 +21,10 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import CreateNFTAuctionModal from "@/components/CreateNFTAuctionModal";
-import ViewBidsModal from "@/components/ViewBidsModal";
+import PlaceNFTBidModal from "@/components/PlaceNFTBidModal";
+import FinalizeNFTAuctionModal from "@/components/FinalizeNFTAuctionModal";
+import RepayNFTLoanModal from "@/components/RepayNFTLoanModal";
+import ClaimNFTModal from "@/components/ClaimNFTModal";
 import { motion } from "framer-motion";
 import {
   Info,
@@ -32,176 +35,153 @@ import {
   Plus,
   Loader2,
   Wallet,
+  User,
+  AlertTriangle,
 } from "lucide-react";
-import { useAuctionStore } from "@/store/useAuctionStore";
-import { useLoanStore } from "@/store/useLoanStore";
-import * as contracts from "@/lib/mockContracts";
-import { analytics } from "@/lib/analytics";
+import { useNFTStore, type NFT, type NFTAuction, type NFTLoan } from "@/store/useNFTStore";
 
-type NFT = {
-  collection: string;
-  tokenId: string;
-  image: string;
-  whitelisted: boolean;
-  floorPrice: string;
-  category: string;
-};
+// ============================================
+// HELPER FUNCTIONS
+// ============================================
 
-const sampleNFTs: NFT[] = [
-  { collection: "Bored Ape Yacht Club", tokenId: "#1234", image: "", whitelisted: true, floorPrice: "~45 ETH", category: "PFP" },
-  { collection: "CryptoPunks", tokenId: "#5678", image: "", whitelisted: true, floorPrice: "~38 ETH", category: "PFP" },
-  { collection: "Art Blocks Curated", tokenId: "#901", image: "", whitelisted: true, floorPrice: "~12 ETH", category: "Art" },
-  { collection: "Decentraland Land", tokenId: "#2345", image: "", whitelisted: false, floorPrice: "~2 ETH", category: "Gaming" },
-  { collection: "ENS Domains", tokenId: "gavel.eth", image: "", whitelisted: false, floorPrice: "~0.5 ETH", category: "Domains" },
-];
+function formatTimeLeft(endTime: number): string {
+  const diff = endTime - Date.now();
+  if (diff <= 0) return "Ended";
 
-const activeAuctions = [
-  {
-    id: "#A1",
-    collection: "Bored Ape Yacht Club",
-    tokenId: "#1234",
-    loan: "10,000 USDC",
-    maxRepay: "11,500 USDC",
-    currentBid: "10,800 USDC",
-    bids: 3,
-    timeLeft: "2h 15m",
-    status: "Active" as const,
-  },
-  {
-    id: "#A2",
-    collection: "CryptoPunks",
-    tokenId: "#5678",
-    loan: "15,000 USDC",
-    maxRepay: "17,250 USDC",
-    currentBid: "16,100 USDC",
-    bids: 7,
-    timeLeft: "8h 40m",
-    status: "Active" as const,
-  },
-  {
-    id: "#A3",
-    collection: "Art Blocks Curated",
-    tokenId: "#901",
-    loan: "5,000 USDC",
-    maxRepay: "5,750 USDC",
-    currentBid: "5,200 USDC",
-    bids: 1,
-    timeLeft: "45m",
-    status: "Active" as const,
-  },
-];
+  const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+  const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+  const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
 
-const activeLoans = [
-  {
-    id: "#L1",
-    collection: "Bored Ape Yacht Club",
-    tokenId: "#4567",
-    role: "borrower" as const,
-    loan: "10,000 USDC",
-    repayment: "11,500 USDC",
-    apr: "~15% APR",
-    timeLeft: "12d 5h",
-    progress: 60,
-    status: "healthy" as const,
-  },
-  {
-    id: "#L2",
-    collection: "CryptoPunks",
-    tokenId: "#8901",
-    role: "lender" as const,
-    loan: "8,000 USDC",
-    repayment: "8,960 USDC",
-    apr: "~12% APR",
-    timeLeft: "3d 8h",
-    progress: 88,
-    status: "approaching" as const,
-  },
-];
+  if (days > 0) return `${days}d ${hours}h`;
+  if (hours > 0) return `${hours}h ${minutes}m`;
+  return `${minutes}m`;
+}
+
+function getLoanProgress(loan: NFTLoan): number {
+  const totalDuration = loan.maturityTime - loan.startTime;
+  const elapsed = Date.now() - loan.startTime;
+  return Math.min(Math.max((elapsed / totalDuration) * 100, 0), 100);
+}
 
 const statusColors = {
-  healthy: { text: "text-success", bar: "bg-success" },
-  approaching: { text: "text-warning", bar: "bg-warning" },
-  grace: { text: "text-warning", bar: "bg-warning" },
-  overdue: { text: "text-destructive", bar: "bg-destructive" },
+  active: { text: "text-success", bar: "bg-success", badge: "success" as const },
+  grace_period: { text: "text-warning", bar: "bg-warning", badge: "warning" as const },
+  overdue: { text: "text-destructive", bar: "bg-destructive", badge: "destructive" as const },
+  repaid: { text: "text-muted-foreground", bar: "bg-muted", badge: "muted" as const },
+  defaulted: { text: "text-muted-foreground", bar: "bg-muted", badge: "muted" as const },
 };
+
+// ============================================
+// MAIN COMPONENT
+// ============================================
 
 const NFTLending = () => {
   const { address, isConnected } = useWallet();
   const { openConnectModal } = useConnectModal();
 
+  // Store state
+  const nfts = useNFTStore((state) => state.nfts);
+  const auctions = useNFTStore((state) => state.auctions);
+  const loans = useNFTStore((state) => state.loans);
+  const mintNFT = useNFTStore((state) => state.mintNFT);
+  const updateAuctionStatuses = useNFTStore((state) => state.updateAuctionStatuses);
+  const updateLoanStatuses = useNFTStore((state) => state.updateLoanStatuses);
+
+  // Local state
   const [activeTab, setActiveTab] = useState("collection");
   const [loanRoleFilter, setLoanRoleFilter] = useState<"all" | "borrower" | "lender">("all");
-  const [auctionNFT, setAuctionNFT] = useState<NFT | null>(null);
-  const [viewBidsAuction, setViewBidsAuction] = useState<typeof activeAuctions[0] | null>(null);
   const [nftFilter, setNftFilter] = useState("All");
   const [isMinting, setIsMinting] = useState(false);
-  const [userNFTs, setUserNFTs] = useState<NFT[]>(sampleNFTs);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
-  // Get auctions and loans from stores
-  const allAuctions = useAuctionStore((state) => state.auctions);
-  const finalizeAuction = useAuctionStore((state) => state.finalizeAuction);
-  const allLoans = useLoanStore((state) => state.loans);
-  const repayLoan = useLoanStore((state) => state.repayLoan);
-  const claimCollateral = useLoanStore((state) => state.claimCollateral);
+  // Modal states
+  const [auctionNFT, setAuctionNFT] = useState<NFT | null>(null);
+  const [placeBidAuction, setPlaceBidAuction] = useState<NFTAuction | null>(null);
+  const [finalizeAuction, setFinalizeAuction] = useState<NFTAuction | null>(null);
+  const [repayLoan, setRepayLoan] = useState<NFTLoan | null>(null);
+  const [claimLoan, setClaimLoan] = useState<NFTLoan | null>(null);
 
-  // Filter user's NFT-backed auctions (mock: show all for demo)
-  const nftAuctions = useMemo(() => {
-    return allAuctions.filter(
-      (a) => (a.status === "active" || a.status === "ending_soon") &&
-             a.collateralToken === "ETH" // Simplified - in real app would filter by NFT
-    ).slice(0, 3);
-  }, [allAuctions]);
+  // Update statuses periodically
+  useEffect(() => {
+    const interval = setInterval(() => {
+      updateAuctionStatuses();
+      updateLoanStatuses();
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [updateAuctionStatuses, updateLoanStatuses]);
 
-  // Filter user's NFT-backed loans
-  const nftLoans = useMemo(() => {
-    if (!address) return [];
-    return allLoans.filter(
-      (l) => l.status === "active" &&
-             (l.borrower === address || l.lender === address)
+  // Filter user's NFTs
+  const userNFTs = useMemo(() => {
+    if (!address) return nfts; // Show all for demo when not connected
+    return nfts.filter((nft) => nft.owner.toLowerCase() === address.toLowerCase());
+  }, [nfts, address]);
+
+  const filteredNFTs = useMemo(() => {
+    return userNFTs.filter(
+      (nft) => nftFilter === "All" || nft.category === nftFilter
     );
-  }, [allLoans, address]);
+  }, [userNFTs, nftFilter]);
 
-  const filteredNFTs = userNFTs.filter(
-    (nft) => nftFilter === "All" || nft.category === nftFilter
-  );
-  const filteredLoans = nftLoans.length > 0 ? nftLoans.filter(
-    (l) => loanRoleFilter === "all" ||
-           (loanRoleFilter === "borrower" && l.borrower === address) ||
-           (loanRoleFilter === "lender" && l.lender === address)
-  ) : activeLoans.filter(
-    (l) => loanRoleFilter === "all" || l.role === loanRoleFilter
-  );
+  // Filter active auctions (show all for bidding, highlight owned)
+  const activeAuctions = useMemo(() => {
+    return auctions.filter(
+      (a) => a.status === "active" || a.status === "ending_soon" || a.status === "ended"
+    );
+  }, [auctions]);
 
+  // Filter user's loans
+  const userLoans = useMemo(() => {
+    if (!address) return loans.filter((l) => l.status !== "repaid" && l.status !== "defaulted");
+    return loans.filter(
+      (l) =>
+        (l.borrower.toLowerCase() === address.toLowerCase() ||
+          l.lender.toLowerCase() === address.toLowerCase()) &&
+        (l.status === "active" || l.status === "grace_period" || l.status === "overdue")
+    );
+  }, [loans, address]);
+
+  const filteredLoans = useMemo(() => {
+    if (loanRoleFilter === "all") return userLoans;
+    return userLoans.filter((loan) => {
+      if (!address) return true;
+      if (loanRoleFilter === "borrower") {
+        return loan.borrower.toLowerCase() === address.toLowerCase();
+      }
+      return loan.lender.toLowerCase() === address.toLowerCase();
+    });
+  }, [userLoans, loanRoleFilter, address]);
+
+  // Check ownership
+  const isAuctionOwner = (auction: NFTAuction) => {
+    if (!address) return false;
+    return auction.borrower.toLowerCase() === address.toLowerCase();
+  };
+
+  const isBorrower = (loan: NFTLoan) => {
+    if (!address) return false;
+    return loan.borrower.toLowerCase() === address.toLowerCase();
+  };
+
+  const isLender = (loan: NFTLoan) => {
+    if (!address) return false;
+    return loan.lender.toLowerCase() === address.toLowerCase();
+  };
+
+  // Handlers
   const handleMintNFT = async () => {
-    if (!isConnected) {
+    if (!isConnected || !address) {
       openConnectModal?.();
       return;
     }
 
     setIsMinting(true);
     try {
-      await contracts.mintTestNFT();
-      // Add a new mock NFT to the user's collection
-      const newNFT: NFT = {
-        collection: "Test Collection",
-        tokenId: `#${Math.floor(Math.random() * 10000)}`,
-        image: "",
-        whitelisted: true,
-        floorPrice: "~0.1 ETH",
-        category: "Art",
-      };
-      setUserNFTs((prev) => [...prev, newNFT]);
-
-      // Track analytics event
-      analytics.nftMinted(newNFT.collection, newNFT.tokenId);
-
+      const newNFT = await mintNFT(address);
       toast.success("NFT Minted!", {
         description: `You received ${newNFT.collection} ${newNFT.tokenId}`,
       });
     } catch (error) {
       console.error("Mint failed:", error);
-      toast.error("Failed to mint NFT");
     } finally {
       setIsMinting(false);
     }
@@ -209,58 +189,65 @@ const NFTLending = () => {
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
-    // Simulate refresh
-    await new Promise((r) => setTimeout(r, 1000));
+    updateAuctionStatuses();
+    updateLoanStatuses();
+    await new Promise((r) => setTimeout(r, 500));
     setIsRefreshing(false);
     toast.success("Data refreshed");
   };
 
-  const handleFinalizeAuction = async (auctionId: string) => {
-    if (!isConnected) {
-      openConnectModal?.();
-      return;
-    }
+  // Get auction button state
+  const getAuctionButton = (auction: NFTAuction) => {
+    const isOwner = isAuctionOwner(auction);
+    const hasEnded = auction.status === "ended";
+    const hasBids = auction.bidCount > 0;
 
-    try {
-      await finalizeAuction(auctionId);
-      toast.success("Auction finalized!", {
-        description: "Loan has been created from the winning bid",
-      });
-    } catch (error) {
-      console.error("Finalize failed:", error);
+    if (isOwner) {
+      if (hasEnded && hasBids) {
+        return { label: "Finalize", variant: "gradient" as const, action: () => setFinalizeAuction(auction), disabled: false };
+      }
+      if (hasEnded && !hasBids) {
+        return { label: "No Bids", variant: "outline" as const, action: () => {}, disabled: true };
+      }
+      return { label: "Waiting...", variant: "outline" as const, action: () => {}, disabled: true };
+    } else {
+      if (hasEnded) {
+        return { label: "Ended", variant: "outline" as const, action: () => {}, disabled: true };
+      }
+      return { label: "Place Bid", variant: "gradient" as const, action: () => setPlaceBidAuction(auction), disabled: !isConnected };
     }
   };
 
-  const handleRepayLoan = async (loanId: string) => {
-    if (!isConnected || !address) {
-      openConnectModal?.();
-      return;
+  // Get loan button state
+  const getLoanButton = (loan: NFTLoan) => {
+    const borrower = isBorrower(loan);
+    const lender = isLender(loan);
+    const canClaim = loan.status === "overdue" && Date.now() > loan.gracePeriodEnd;
+
+    if (borrower) {
+      if (loan.status === "grace_period") {
+        return {
+          label: "Repay Now",
+          variant: "warning" as const,
+          action: () => setRepayLoan(loan),
+          disabled: false,
+          urgent: true,
+        };
+      }
+      if (loan.status === "overdue") {
+        return { label: "Overdue", variant: "destructive" as const, action: () => {}, disabled: true };
+      }
+      return { label: "Repay Loan", variant: "gradient" as const, action: () => setRepayLoan(loan), disabled: false };
     }
 
-    try {
-      await repayLoan(loanId, address);
-      toast.success("Loan repaid!", {
-        description: "Your NFT collateral has been returned",
-      });
-    } catch (error) {
-      console.error("Repay failed:", error);
-    }
-  };
-
-  const handleClaimCollateral = async (loanId: string) => {
-    if (!isConnected || !address) {
-      openConnectModal?.();
-      return;
+    if (lender) {
+      if (canClaim) {
+        return { label: "Claim NFT", variant: "accent" as const, action: () => setClaimLoan(loan), disabled: false };
+      }
+      return { label: "Waiting", variant: "outline" as const, action: () => {}, disabled: true };
     }
 
-    try {
-      await claimCollateral(loanId, address);
-      toast.success("NFT claimed!", {
-        description: "The NFT collateral is now yours",
-      });
-    } catch (error) {
-      console.error("Claim failed:", error);
-    }
+    return { label: "View", variant: "outline" as const, action: () => {}, disabled: true };
   };
 
   return (
@@ -281,7 +268,9 @@ const NFTLending = () => {
                 </TooltipContent>
               </Tooltip>
             </div>
-            <p className="text-sm text-muted-foreground mt-1">Borrow stablecoins using your NFTs as collateral</p>
+            <p className="text-sm text-muted-foreground mt-1">
+              Borrow stablecoins using your NFTs as collateral
+            </p>
           </div>
         </div>
 
@@ -289,11 +278,27 @@ const NFTLending = () => {
         <Tabs value={activeTab} onValueChange={setActiveTab}>
           <TabsList className="bg-secondary mb-6">
             <TabsTrigger value="collection">Your NFTs</TabsTrigger>
-            <TabsTrigger value="auctions">Active Auctions</TabsTrigger>
-            <TabsTrigger value="loans">Active Loans</TabsTrigger>
+            <TabsTrigger value="auctions">
+              Active Auctions
+              {activeAuctions.length > 0 && (
+                <Badge variant="accent" className="ml-2 text-[10px]">
+                  {activeAuctions.length}
+                </Badge>
+              )}
+            </TabsTrigger>
+            <TabsTrigger value="loans">
+              Active Loans
+              {userLoans.length > 0 && (
+                <Badge variant="accent" className="ml-2 text-[10px]">
+                  {userLoans.length}
+                </Badge>
+              )}
+            </TabsTrigger>
           </TabsList>
 
+          {/* ============================================ */}
           {/* SECTION 1: NFT Collection */}
+          {/* ============================================ */}
           <TabsContent value="collection">
             <div className="flex items-center justify-between mb-4">
               <div className="flex gap-1.5">
@@ -319,9 +324,13 @@ const NFTLending = () => {
                 disabled={isMinting}
               >
                 {isMinting ? (
-                  <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Minting...</>
+                  <>
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" /> Minting...
+                  </>
                 ) : (
-                  <><Plus className="h-3.5 w-3.5" /> Mint Test NFT</>
+                  <>
+                    <Plus className="h-3.5 w-3.5" /> Mint Test NFT
+                  </>
                 )}
               </Button>
             </div>
@@ -330,13 +339,12 @@ const NFTLending = () => {
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                 {filteredNFTs.map((nft, i) => (
                   <motion.div
-                    key={`${nft.collection}-${nft.tokenId}`}
+                    key={nft.id}
                     initial={{ opacity: 0, y: 12 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: i * 0.05 }}
                   >
                     <Card className="border-border bg-card hover:border-primary/30 transition-all duration-200 hover:-translate-y-0.5 overflow-hidden group">
-                      {/* Image placeholder */}
                       <div className="aspect-square bg-muted flex items-center justify-center relative">
                         <ImageIcon className="h-12 w-12 text-muted-foreground/30" />
                         <div className="absolute top-2 right-2">
@@ -350,7 +358,9 @@ const NFTLending = () => {
                       </div>
                       <CardContent className="p-4 space-y-2">
                         <p className="font-medium text-sm truncate">{nft.collection}</p>
-                        <p className="text-xs text-muted-foreground font-mono-numbers">{nft.tokenId}</p>
+                        <p className="text-xs text-muted-foreground font-mono-numbers">
+                          {nft.tokenId}
+                        </p>
                         <p className="text-xs text-muted-foreground">Floor: {nft.floorPrice}</p>
                         <Button
                           variant={nft.whitelisted ? "gradient" : "outline"}
@@ -378,7 +388,9 @@ const NFTLending = () => {
                   <>
                     <Wallet className="h-12 w-12 text-muted-foreground mb-4" />
                     <h3 className="text-lg font-semibold mb-1">Connect your wallet</h3>
-                    <p className="text-sm text-muted-foreground mb-3">Connect to view your NFT collection</p>
+                    <p className="text-sm text-muted-foreground mb-3">
+                      Connect to view your NFT collection
+                    </p>
                     <Button variant="gradient" size="sm" onClick={() => openConnectModal?.()}>
                       Connect Wallet
                     </Button>
@@ -395,9 +407,13 @@ const NFTLending = () => {
                       disabled={isMinting}
                     >
                       {isMinting ? (
-                        <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Minting...</>
+                        <>
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" /> Minting...
+                        </>
                       ) : (
-                        <><Plus className="h-3.5 w-3.5" /> Mint Test NFT</>
+                        <>
+                          <Plus className="h-3.5 w-3.5" /> Mint Test NFT
+                        </>
                       )}
                     </Button>
                   </>
@@ -406,10 +422,12 @@ const NFTLending = () => {
             )}
           </TabsContent>
 
+          {/* ============================================ */}
           {/* SECTION 2: Active NFT Auctions */}
+          {/* ============================================ */}
           <TabsContent value="auctions">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold">Your Active NFT Auctions</h2>
+              <h2 className="text-lg font-semibold">Active NFT Auctions</h2>
               <Button
                 variant="outline"
                 size="icon"
@@ -428,58 +446,91 @@ const NFTLending = () => {
                     <TableRow className="border-border hover:bg-transparent">
                       <TableHead className="text-muted-foreground">NFT</TableHead>
                       <TableHead className="text-muted-foreground">Loan</TableHead>
-                      <TableHead className="text-muted-foreground hidden md:table-cell">Max Repay</TableHead>
+                      <TableHead className="text-muted-foreground hidden md:table-cell">
+                        Max Repay
+                      </TableHead>
                       <TableHead className="text-muted-foreground">Current Bid</TableHead>
-                      <TableHead className="text-muted-foreground hidden sm:table-cell">Time Left</TableHead>
+                      <TableHead className="text-muted-foreground hidden sm:table-cell">
+                        Time Left
+                      </TableHead>
                       <TableHead className="text-muted-foreground text-right">Action</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {activeAuctions.map((auction) => (
-                      <TableRow key={auction.id} className="border-border hover:bg-secondary/30 transition-colors">
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            <div className="h-8 w-8 rounded bg-muted flex items-center justify-center">
-                              <ImageIcon className="h-4 w-4 text-muted-foreground/50" />
+                    {activeAuctions.map((auction) => {
+                      const buttonState = getAuctionButton(auction);
+                      const isOwner = isAuctionOwner(auction);
+                      const timeLeft = formatTimeLeft(auction.auctionEndTime);
+                      const isEndingSoon = auction.status === "ending_soon";
+                      const hasEnded = auction.status === "ended";
+
+                      return (
+                        <TableRow
+                          key={auction.id}
+                          className={`border-border hover:bg-secondary/30 transition-colors ${
+                            isOwner ? "bg-primary/5" : ""
+                          }`}
+                        >
+                          <TableCell>
+                            <div className="flex items-center gap-2">
+                              <div className="h-8 w-8 rounded bg-muted flex items-center justify-center">
+                                <ImageIcon className="h-4 w-4 text-muted-foreground/50" />
+                              </div>
+                              <div>
+                                <div className="flex items-center gap-2">
+                                  <p className="text-sm font-medium truncate max-w-[120px]">
+                                    {auction.collection}
+                                  </p>
+                                  {isOwner && (
+                                    <Badge variant="accent" className="text-[10px] gap-1">
+                                      <User className="h-3 w-3" /> Yours
+                                    </Badge>
+                                  )}
+                                </div>
+                                <p className="text-xs text-muted-foreground font-mono-numbers">
+                                  {auction.tokenId}
+                                </p>
+                              </div>
                             </div>
-                            <div>
-                              <p className="text-sm font-medium truncate max-w-[120px]">{auction.collection}</p>
-                              <p className="text-xs text-muted-foreground font-mono-numbers">{auction.tokenId}</p>
-                            </div>
-                          </div>
-                        </TableCell>
-                        <TableCell className="font-mono-numbers text-sm">{auction.loan}</TableCell>
-                        <TableCell className="font-mono-numbers text-sm hidden md:table-cell">{auction.maxRepay}</TableCell>
-                        <TableCell>
-                          <span className="font-mono-numbers text-sm">{auction.currentBid}</span>
-                          <span className="text-xs text-muted-foreground block">({auction.bids} bids)</span>
-                        </TableCell>
-                        <TableCell className="hidden sm:table-cell">
-                          <span className="flex items-center gap-1 font-mono-numbers text-sm">
-                            <Clock className="h-3.5 w-3.5 text-muted-foreground" />
-                            {auction.timeLeft}
-                          </span>
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <div className="flex gap-1.5 justify-end">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => setViewBidsAuction(auction)}
+                          </TableCell>
+                          <TableCell className="font-mono-numbers text-sm">
+                            {parseFloat(auction.loanAmount).toLocaleString()} {auction.loanToken}
+                          </TableCell>
+                          <TableCell className="font-mono-numbers text-sm hidden md:table-cell">
+                            {parseFloat(auction.maxRepayment).toLocaleString()} {auction.loanToken}
+                          </TableCell>
+                          <TableCell>
+                            <span className="font-mono-numbers text-sm">
+                              {auction.currentBid
+                                ? `${parseFloat(auction.currentBid).toLocaleString()} ${auction.loanToken}`
+                                : "No bids"}
+                            </span>
+                            <span className="text-xs text-muted-foreground block">
+                              ({auction.bidCount} bids)
+                            </span>
+                          </TableCell>
+                          <TableCell className="hidden sm:table-cell">
+                            <Badge
+                              variant={hasEnded ? "muted" : isEndingSoon ? "warning" : "success"}
+                              className="gap-1"
                             >
-                              View Bids
-                            </Button>
+                              <Clock className="h-3 w-3" />
+                              {timeLeft}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-right">
                             <Button
-                              variant="gradient"
+                              variant={buttonState.variant}
                               size="sm"
-                              onClick={() => handleFinalizeAuction(auction.id)}
+                              onClick={buttonState.action}
+                              disabled={buttonState.disabled}
                             >
-                              Finalize
+                              {buttonState.label}
                             </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
                   </TableBody>
                 </Table>
               </div>
@@ -492,11 +543,13 @@ const NFTLending = () => {
             )}
           </TabsContent>
 
+          {/* ============================================ */}
           {/* SECTION 3: Active NFT Loans */}
+          {/* ============================================ */}
           <TabsContent value="loans">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-3">
-                <h2 className="text-lg font-semibold">Your Active NFT Loans</h2>
+                <h2 className="text-lg font-semibold">Active NFT Loans</h2>
                 <div className="flex rounded-lg border border-border overflow-hidden">
                   {(["all", "borrower", "lender"] as const).map((opt) => (
                     <button
@@ -532,68 +585,93 @@ const NFTLending = () => {
                       <TableHead className="text-muted-foreground">NFT</TableHead>
                       <TableHead className="text-muted-foreground">Role</TableHead>
                       <TableHead className="text-muted-foreground">Loan</TableHead>
-                      <TableHead className="text-muted-foreground hidden md:table-cell">Repayment</TableHead>
+                      <TableHead className="text-muted-foreground hidden md:table-cell">
+                        Repayment
+                      </TableHead>
                       <TableHead className="text-muted-foreground">Status</TableHead>
                       <TableHead className="text-muted-foreground text-right">Action</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {filteredLoans.map((loan) => {
+                      const buttonState = getLoanButton(loan);
+                      const progress = getLoanProgress(loan);
                       const config = statusColors[loan.status];
+                      const role = isBorrower(loan) ? "borrower" : "lender";
+                      const timeLeft = formatTimeLeft(
+                        loan.status === "grace_period" ? loan.gracePeriodEnd : loan.maturityTime
+                      );
+
                       return (
-                        <TableRow key={loan.id} className="border-border hover:bg-secondary/30 transition-colors">
+                        <TableRow
+                          key={loan.id}
+                          className="border-border hover:bg-secondary/30 transition-colors"
+                        >
                           <TableCell>
                             <div className="flex items-center gap-2">
                               <div className="h-8 w-8 rounded bg-muted flex items-center justify-center">
                                 <ImageIcon className="h-4 w-4 text-muted-foreground/50" />
                               </div>
                               <div>
-                                <p className="text-sm font-medium truncate max-w-[120px]">{loan.collection}</p>
-                                <p className="text-xs text-muted-foreground font-mono-numbers">{loan.tokenId}</p>
+                                <p className="text-sm font-medium truncate max-w-[120px]">
+                                  {loan.collection}
+                                </p>
+                                <p className="text-xs text-muted-foreground font-mono-numbers">
+                                  {loan.tokenId}
+                                </p>
                               </div>
                             </div>
                           </TableCell>
                           <TableCell>
-                            <Badge variant={loan.role === "borrower" ? "default" : "accent"}>
-                              {loan.role === "borrower" ? "Borrower" : "Lender"}
+                            <Badge variant={role === "borrower" ? "default" : "accent"}>
+                              {role === "borrower" ? "Borrower" : "Lender"}
                             </Badge>
                           </TableCell>
-                          <TableCell className="font-mono-numbers text-sm">{loan.loan}</TableCell>
+                          <TableCell className="font-mono-numbers text-sm">
+                            {parseFloat(loan.loanAmount).toLocaleString()} {loan.loanToken}
+                          </TableCell>
                           <TableCell className="hidden md:table-cell">
-                            <span className="font-mono-numbers text-sm">{loan.repayment}</span>
-                            <Badge variant="accent" className="ml-2 text-[10px]">{loan.apr}</Badge>
+                            <span className="font-mono-numbers text-sm">
+                              {parseFloat(loan.repaymentAmount).toLocaleString()} {loan.loanToken}
+                            </span>
+                            <Badge variant="accent" className="ml-2 text-[10px]">
+                              {loan.apr.toFixed(1)}% APR
+                            </Badge>
                           </TableCell>
                           <TableCell>
                             <div className="space-y-1.5 min-w-[100px]">
                               <div className="h-1.5 w-full rounded-full bg-secondary overflow-hidden">
                                 <div
                                   className={`h-full rounded-full transition-all ${config.bar}`}
-                                  style={{ width: `${Math.min(loan.progress, 100)}%` }}
+                                  style={{ width: `${Math.min(progress, 100)}%` }}
                                 />
                               </div>
-                              <span className={`text-xs font-medium ${config.text}`}>{loan.timeLeft}</span>
+                              <div className="flex items-center gap-1">
+                                {loan.status === "grace_period" && (
+                                  <AlertTriangle className="h-3 w-3 text-warning" />
+                                )}
+                                {loan.status === "overdue" && (
+                                  <AlertTriangle className="h-3 w-3 text-destructive" />
+                                )}
+                                <span className={`text-xs font-medium ${config.text}`}>
+                                  {loan.status === "grace_period"
+                                    ? `Grace: ${timeLeft}`
+                                    : loan.status === "overdue"
+                                    ? "Overdue"
+                                    : timeLeft}
+                                </span>
+                              </div>
                             </div>
                           </TableCell>
                           <TableCell className="text-right">
-                            {loan.role === "borrower" ? (
-                              <Button
-                                variant="gradient"
-                                size="sm"
-                                onClick={() => handleRepayLoan(loan.id)}
-                              >
-                                Repay Loan
-                              </Button>
-                            ) : (loan.status as string) === "overdue" ? (
-                              <Button
-                                variant="accent"
-                                size="sm"
-                                onClick={() => handleClaimCollateral(loan.id)}
-                              >
-                                Claim NFT
-                              </Button>
-                            ) : (
-                              <Button variant="outline" size="sm" disabled>Waiting</Button>
-                            )}
+                            <Button
+                              variant={buttonState.variant}
+                              size="sm"
+                              onClick={buttonState.action}
+                              disabled={buttonState.disabled}
+                            >
+                              {buttonState.label}
+                            </Button>
                           </TableCell>
                         </TableRow>
                       );
@@ -611,6 +689,10 @@ const NFTLending = () => {
         </Tabs>
       </main>
 
+      {/* ============================================ */}
+      {/* MODALS */}
+      {/* ============================================ */}
+
       {/* Create NFT Auction Modal */}
       {auctionNFT && (
         <CreateNFTAuctionModal
@@ -620,12 +702,39 @@ const NFTLending = () => {
         />
       )}
 
-      {/* View Bids Modal */}
-      {viewBidsAuction && (
-        <ViewBidsModal
-          open={!!viewBidsAuction}
-          onOpenChange={(open) => !open && setViewBidsAuction(null)}
-          auction={viewBidsAuction}
+      {/* Place Bid Modal */}
+      {placeBidAuction && (
+        <PlaceNFTBidModal
+          open={!!placeBidAuction}
+          onOpenChange={(open) => !open && setPlaceBidAuction(null)}
+          auction={placeBidAuction}
+        />
+      )}
+
+      {/* Finalize Auction Modal */}
+      {finalizeAuction && (
+        <FinalizeNFTAuctionModal
+          open={!!finalizeAuction}
+          onOpenChange={(open) => !open && setFinalizeAuction(null)}
+          auction={finalizeAuction}
+        />
+      )}
+
+      {/* Repay Loan Modal */}
+      {repayLoan && (
+        <RepayNFTLoanModal
+          open={!!repayLoan}
+          onOpenChange={(open) => !open && setRepayLoan(null)}
+          loan={repayLoan}
+        />
+      )}
+
+      {/* Claim NFT Modal */}
+      {claimLoan && (
+        <ClaimNFTModal
+          open={!!claimLoan}
+          onOpenChange={(open) => !open && setClaimLoan(null)}
+          loan={claimLoan}
         />
       )}
     </div>

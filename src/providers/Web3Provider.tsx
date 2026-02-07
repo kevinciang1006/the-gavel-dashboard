@@ -1,13 +1,20 @@
 import { useEffect, useRef } from "react";
 import { RainbowKitProvider, darkTheme } from "@rainbow-me/rainbowkit";
-import { WagmiProvider, useAccount } from "wagmi";
+import { WagmiProvider, useAccount, useReconnect } from "wagmi";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { config } from "@/config/wagmi";
 import { analytics } from "@/lib/analytics";
 import "@rainbow-me/rainbowkit/styles.css";
 
-// Create a client for react-query
-const queryClient = new QueryClient();
+// Create a client for react-query with stale time config
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 1000 * 60, // 1 minute
+      refetchOnWindowFocus: true,
+    },
+  },
+});
 
 // Custom RainbowKit theme matching our dark purple design
 const customTheme = darkTheme({
@@ -40,11 +47,13 @@ interface Web3ProviderProps {
   children: React.ReactNode;
 }
 
-// Track wallet connection events
+// Track wallet connection events and handle reconnection
 function WalletConnectionTracker({ children }: { children: React.ReactNode }) {
   const { address, isConnected, connector } = useAccount();
+  const { reconnect } = useReconnect();
   const wasConnected = useRef(false);
 
+  // Track analytics on connection
   useEffect(() => {
     if (isConnected && address && !wasConnected.current) {
       analytics.walletConnected(address, connector?.name);
@@ -53,6 +62,27 @@ function WalletConnectionTracker({ children }: { children: React.ReactNode }) {
       wasConnected.current = false;
     }
   }, [isConnected, address, connector]);
+
+  // Reconnect on window focus/visibility change (helps with WalletConnect mobile)
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        reconnect();
+      }
+    };
+
+    const handleFocus = () => {
+      reconnect();
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("focus", handleFocus);
+
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("focus", handleFocus);
+    };
+  }, [reconnect]);
 
   return <>{children}</>;
 }

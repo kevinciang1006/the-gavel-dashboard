@@ -1,5 +1,6 @@
 import { getDefaultConfig } from "@rainbow-me/rainbowkit";
 import { arbitrumSepolia } from "wagmi/chains";
+import { http } from "wagmi";
 
 // Define the config for wagmi + RainbowKit
 export const config = getDefaultConfig({
@@ -7,6 +8,9 @@ export const config = getDefaultConfig({
   projectId: import.meta.env.VITE_WALLETCONNECT_PROJECT_ID || "YOUR_PROJECT_ID",
   chains: [arbitrumSepolia],
   ssr: false,
+  transports: {
+    [arbitrumSepolia.id]: http(),
+  },
 });
 
 // Export chain for easy access
