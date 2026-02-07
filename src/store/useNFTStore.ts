@@ -68,10 +68,13 @@ export interface NFTLoan {
 // INITIAL DATA
 // ============================================
 
+import { DEMO_USERS } from "./useDemoWalletStore";
+
+// Use addresses from the demo wallet store for consistency
 const DEMO_ADDRESSES = {
-  alice: "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045",
-  bob: "0x71C7656EC7ab88b098defB751B7401B5f6d8976F",
-  charlie: "0xaB5409b0E5a66AcC9D63f668414539A60a5917C1",
+  alice: DEMO_USERS.userA.address,
+  bob: DEMO_USERS.userB.address,
+  charlie: DEMO_USERS.userC.address,
 };
 
 const initialNFTs: NFT[] = [

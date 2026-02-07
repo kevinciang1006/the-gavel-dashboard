@@ -2,6 +2,12 @@ import { create } from "zustand";
 import type { Auction, AuctionStatus } from "@/types";
 import * as contracts from "@/lib/mockContracts";
 import { analytics } from "@/lib/analytics";
+import { DEMO_USERS } from "./useDemoWalletStore";
+
+// Demo addresses for consistency
+const ALICE = DEMO_USERS.userA.address;
+const BOB = DEMO_USERS.userB.address;
+const CHARLIE = DEMO_USERS.userC.address;
 
 // Helper to generate auction ID
 function generateAuctionId(): string {
@@ -16,18 +22,18 @@ function parseDuration(duration: string): number {
   return value * 1000;
 }
 
-// Initial mock auctions
+// Initial mock auctions - using demo user addresses
 const initialAuctions: Auction[] = [
   {
     id: "#1001",
-    borrower: "0x1234567890abcdef1234567890abcdef12345678",
+    borrower: ALICE, // Alice's auction
     collateralToken: "WBTC",
     collateralAmount: "1.5",
     loanToken: "USDC",
     loanAmount: "50000",
     maxRepayment: "55000",
     currentBid: "52500",
-    currentBidder: "0xabcdef1234567890abcdef1234567890abcdef12",
+    currentBidder: BOB, // Bob is winning bidder
     bidCount: 5,
     auctionEndTime: Date.now() + 4 * 60 * 60 * 1000, // 4 hours
     loanDuration: "30d",
@@ -37,14 +43,14 @@ const initialAuctions: Auction[] = [
   },
   {
     id: "#1002",
-    borrower: "0x2345678901bcdef12345678901bcdef123456789",
+    borrower: BOB, // Bob's auction
     collateralToken: "ETH",
     collateralAmount: "25",
     loanToken: "USDC",
     loanAmount: "80000",
     maxRepayment: "88000",
     currentBid: "84200",
-    currentBidder: "0xbcdef12345678901bcdef12345678901bcdef123",
+    currentBidder: ALICE, // Alice is winning bidder
     bidCount: 8,
     auctionEndTime: Date.now() + 12 * 60 * 60 * 1000, // 12 hours
     loanDuration: "90d",
@@ -54,14 +60,14 @@ const initialAuctions: Auction[] = [
   },
   {
     id: "#1003",
-    borrower: "0x3456789012cdef123456789012cdef1234567890",
+    borrower: CHARLIE, // Charlie's auction
     collateralToken: "WBTC",
     collateralAmount: "0.8",
     loanToken: "USDT",
     loanAmount: "30000",
     maxRepayment: "33000",
     currentBid: "31800",
-    currentBidder: "0xcdef123456789012cdef123456789012cdef1234",
+    currentBidder: ALICE, // Alice is winning bidder
     bidCount: 3,
     auctionEndTime: Date.now() + 45 * 60 * 1000, // 45 minutes
     loanDuration: "7d",
@@ -71,14 +77,14 @@ const initialAuctions: Auction[] = [
   },
   {
     id: "#1004",
-    borrower: "0x4567890123def1234567890123def12345678901",
+    borrower: ALICE, // Alice's auction
     collateralToken: "ETH",
     collateralAmount: "10",
     loanToken: "USDC",
     loanAmount: "25000",
     maxRepayment: "27500",
     currentBid: "26100",
-    currentBidder: "0xdef1234567890123def1234567890123def12345",
+    currentBidder: CHARLIE, // Charlie is winning bidder
     bidCount: 2,
     auctionEndTime: Date.now() + 18 * 60 * 60 * 1000, // 18 hours
     loanDuration: "30d",
@@ -88,14 +94,14 @@ const initialAuctions: Auction[] = [
   },
   {
     id: "#1005",
-    borrower: "0x567890124ef12345678901234ef123456789012",
+    borrower: BOB, // Bob's auction
     collateralToken: "WBTC",
     collateralAmount: "2.0",
     loanToken: "USDC",
     loanAmount: "100000",
     maxRepayment: "112000",
     currentBid: "105500",
-    currentBidder: "0xef12345678901234ef12345678901234ef123456",
+    currentBidder: CHARLIE, // Charlie is winning bidder
     bidCount: 11,
     auctionEndTime: Date.now() + 22 * 60 * 1000, // 22 minutes
     loanDuration: "180d",

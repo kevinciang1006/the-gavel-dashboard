@@ -2,6 +2,12 @@ import { create } from "zustand";
 import type { Loan, LoanStatus, Auction } from "@/types";
 import * as contracts from "@/lib/mockContracts";
 import { analytics } from "@/lib/analytics";
+import { DEMO_USERS } from "./useDemoWalletStore";
+
+// Demo addresses for consistency
+const ALICE = DEMO_USERS.userA.address;
+const BOB = DEMO_USERS.userB.address;
+const CHARLIE = DEMO_USERS.userC.address;
 
 // Helper to generate loan ID
 function generateLoanId(): string {
@@ -13,13 +19,13 @@ function generateNftId(): string {
   return `NFT-${Math.floor(Math.random() * 90000) + 10000}`;
 }
 
-// Initial mock loans
+// Initial mock loans - using demo user addresses
 const initialLoans: Loan[] = [
   {
     id: "L2001",
     auctionId: "#0998",
-    borrower: "0x1234567890abcdef1234567890abcdef12345678",
-    lender: "0xabcdef1234567890abcdef1234567890abcdef12",
+    borrower: ALICE, // Alice borrowed
+    lender: BOB, // Bob lent
     collateralToken: "WBTC",
     collateralAmount: "0.5",
     loanToken: "USDC",
@@ -36,8 +42,8 @@ const initialLoans: Loan[] = [
   {
     id: "L2002",
     auctionId: "#0997",
-    borrower: "0x2345678901bcdef12345678901bcdef123456789",
-    lender: "0xbcdef12345678901bcdef12345678901bcdef123",
+    borrower: BOB, // Bob borrowed
+    lender: ALICE, // Alice lent
     collateralToken: "ETH",
     collateralAmount: "5",
     loanToken: "USDC",
@@ -54,8 +60,8 @@ const initialLoans: Loan[] = [
   {
     id: "L2003",
     auctionId: "#0996",
-    borrower: "0x3456789012cdef123456789012cdef1234567890",
-    lender: "0xcdef123456789012cdef123456789012cdef1234",
+    borrower: CHARLIE, // Charlie borrowed
+    lender: ALICE, // Alice lent
     collateralToken: "WBTC",
     collateralAmount: "1.0",
     loanToken: "USDT",

@@ -2,6 +2,12 @@ import { create } from "zustand";
 import type { MarketplaceListing, Loan, ListingStatus } from "@/types";
 import * as contracts from "@/lib/mockContracts";
 import { analytics } from "@/lib/analytics";
+import { DEMO_USERS } from "./useDemoWalletStore";
+
+// Demo addresses for consistency
+const ALICE = DEMO_USERS.userA.address;
+const BOB = DEMO_USERS.userB.address;
+const CHARLIE = DEMO_USERS.userC.address;
 
 // Helper to generate listing ID
 function generateListingId(): string {
@@ -12,8 +18,8 @@ function generateListingId(): string {
 const mockLoan: Loan = {
   id: "L1999",
   auctionId: "#0995",
-  borrower: "0x9876543210fedcba9876543210fedcba98765432",
-  lender: "0xfedcba9876543210fedcba9876543210fedcba98",
+  borrower: CHARLIE, // Charlie is borrower
+  lender: BOB, // Bob is lender
   collateralToken: "ETH",
   collateralAmount: "3.5",
   loanToken: "USDC",
@@ -28,12 +34,12 @@ const mockLoan: Loan = {
   txHash: "0xfedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210",
 };
 
-// Initial mock listings
+// Initial mock listings - using demo user addresses
 const initialListings: MarketplaceListing[] = [
   {
     id: "MKT-3001",
     loanId: "L1999",
-    seller: "0xfedcba9876543210fedcba9876543210fedcba98",
+    seller: BOB, // Bob is selling his lender position
     nftType: "lender",
     price: "9000",
     loanToken: "USDC",
@@ -44,7 +50,7 @@ const initialListings: MarketplaceListing[] = [
   {
     id: "MKT-3002",
     loanId: "L2001",
-    seller: "0xabcdef1234567890abcdef1234567890abcdef12",
+    seller: BOB, // Bob selling another lender position
     nftType: "lender",
     price: "22000",
     loanToken: "USDC",
@@ -53,8 +59,8 @@ const initialListings: MarketplaceListing[] = [
     loan: {
       id: "L2001",
       auctionId: "#0998",
-      borrower: "0x1234567890abcdef1234567890abcdef12345678",
-      lender: "0xabcdef1234567890abcdef1234567890abcdef12",
+      borrower: ALICE, // Alice is borrower
+      lender: BOB, // Bob is lender
       collateralToken: "WBTC",
       collateralAmount: "0.5",
       loanToken: "USDC",

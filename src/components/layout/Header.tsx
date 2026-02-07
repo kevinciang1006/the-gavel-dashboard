@@ -1,5 +1,7 @@
 import { Link, useLocation } from "react-router-dom";
 import { CustomConnectButton } from "@/components/wallet/CustomConnectButton";
+import { DemoUserSwitcher } from "@/components/wallet/DemoUserSwitcher";
+import { useDemoWalletStore } from "@/store/useDemoWalletStore";
 
 const navItems = [
 	{ label: "Dashboard", path: "/" },
@@ -12,6 +14,7 @@ const navItems = [
 
 const Header = () => {
 	const location = useLocation();
+	const isDemoMode = useDemoWalletStore((state) => state.isDemoMode);
 
 	return (
 		<header className="sticky top-0 z-50 w-full border-b border-border/50 bg-background/80 backdrop-blur-xl">
@@ -39,7 +42,18 @@ const Header = () => {
 						))}
 					</nav>
 				</div>
-				<CustomConnectButton />
+
+				{/* Wallet/Demo Section */}
+				<div className="flex items-center gap-3">
+					{isDemoMode ? (
+						<DemoUserSwitcher />
+					) : (
+						<>
+							<DemoUserSwitcher />
+							<CustomConnectButton />
+						</>
+					)}
+				</div>
 			</div>
 		</header>
 	);
