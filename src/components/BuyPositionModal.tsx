@@ -1,4 +1,7 @@
 import { useState } from "react";
+import { useAccount } from "wagmi";
+import { useConnectModal } from "@rainbow-me/rainbowkit";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -10,37 +13,37 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { AlertTriangle, Copy, CheckCircle2 } from "lucide-react";
+import { AlertTriangle, Copy, CheckCircle2, Loader2 } from "lucide-react";
+import { useMarketplaceStore } from "@/store/useMarketplaceStore";
+import type { MarketplaceListing } from "@/types";
+import * as contracts from "@/lib/mockContracts";
 
 interface BuyPositionModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  listing: {
-    id: string;
-    type: "Borrower" | "Lender";
-    collateral: string;
-    loan: string;
-    repayment: string;
-    apr: string;
-    askingPrice: number;
-    marketValue: number;
-    seller: string;
-    timeLeft: string;
-  };
+  listing: MarketplaceListing;
 }
 
 const BuyPositionModal = ({ open, onOpenChange, listing }: BuyPositionModalProps) => {
+  const { address, isConnected } = useAccount();
+  const { openConnectModal } = useConnectModal();
+  const buyPosition = useMarketplaceStore((state) => state.buyPosition);
+
   const [agreed, setAgreed] = useState(false);
+  const [isApproving, setIsApproving] = useState(false);
   const [isApproved, setIsApproved] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [copied, setCopied] = useState(false);
 
-  const walletBalance = 100000;
-  const discount = listing.marketValue - listing.askingPrice;
-  const discountPct = ((discount / listing.marketValue) * 100).toFixed(1);
-  const afterPurchase = walletBalance - listing.askingPrice;
-  const hasSufficient = walletBalance >= listing.askingPrice;
-  const projectedProfit = parseFloat(listing.repayment.replace(/[^0-9.]/g, "")) - listing.askingPrice;
+  const walletBalance = 100000; // Mock balance
+  const askingPrice = parseFloat(listing.price);
+  const loanValue = parseFloat(listing.loan.loanAmount);
+  const repaymentValue = parseFloat(listing.loan.repaymentAmount);
+  const discount = loanValue - askingPrice;
+  const discountPct = ((discount / loanValue) * 100).toFixed(1);
+  const afterPurchase = walletBalance - askingPrice;
+  const hasSufficient = walletBalance >= askingPrice;
+  const projectedProfit = repaymentValue - askingPrice;
 
   const handleCopy = () => {
     navigator.clipboard.writeText(listing.seller);
@@ -48,9 +51,41 @@ const BuyPositionModal = ({ open, onOpenChange, listing }: BuyPositionModalProps
     setTimeout(() => setCopied(false), 1500);
   };
 
-  const handlePurchase = () => {
+  const handleApprove = async () => {
+    if (!isConnected) {
+      openConnectModal?.();
+      return;
+    }
+
+    setIsApproving(true);
+    try {
+      await contracts.approveToken(listing.loanToken, "Marketplace", listing.price);
+      setIsApproved(true);
+    } catch (error) {
+      console.error("Approval failed:", error);
+    } finally {
+      setIsApproving(false);
+    }
+  };
+
+  const handlePurchase = async () => {
+    if (!isConnected || !address) {
+      openConnectModal?.();
+      return;
+    }
+
     setIsSubmitting(true);
-    setTimeout(() => setIsSubmitting(false), 2000);
+    try {
+      await buyPosition(listing.id, address);
+      toast.success("Position purchased!", {
+        description: `You now own ${listing.nftType} position ${listing.loanId}`,
+      });
+      onOpenChange(false);
+    } catch (error) {
+      console.error("Purchase failed:", error);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -69,27 +104,27 @@ const BuyPositionModal = ({ open, onOpenChange, listing }: BuyPositionModalProps
           <div className="rounded-lg bg-secondary/50 p-4 space-y-2 text-sm">
             <div className="flex justify-between">
               <span className="text-muted-foreground">Type</span>
-              <Badge variant={listing.type === "Borrower" ? "default" : "accent"}>{listing.type} Position</Badge>
+              <Badge variant={listing.nftType === "borrower" ? "default" : "accent"}>
+                {listing.nftType === "borrower" ? "Borrower" : "Lender"} Position
+              </Badge>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Collateral</span>
-              <span className="font-mono-numbers font-medium">{listing.collateral}</span>
+              <span className="font-mono-numbers font-medium">
+                {listing.loan.collateralAmount} {listing.loan.collateralToken}
+              </span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Loan Amount</span>
-              <span className="font-mono-numbers font-medium">{listing.loan}</span>
+              <span className="font-mono-numbers font-medium">
+                {parseFloat(listing.loan.loanAmount).toLocaleString()} {listing.loanToken}
+              </span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Repayment</span>
-              <span className="font-mono-numbers font-medium">{listing.repayment}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Time Remaining</span>
-              <span className="font-mono-numbers">{listing.timeLeft}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Interest</span>
-              <Badge variant="accent" className="text-[10px]">{listing.apr}</Badge>
+              <span className="font-mono-numbers font-medium">
+                {parseFloat(listing.loan.repaymentAmount).toLocaleString()} {listing.loanToken}
+              </span>
             </div>
           </div>
 
@@ -98,22 +133,22 @@ const BuyPositionModal = ({ open, onOpenChange, listing }: BuyPositionModalProps
             <div className="flex justify-between items-center">
               <span className="text-muted-foreground">Seller</span>
               <button onClick={handleCopy} className="flex items-center gap-1.5 font-mono-numbers text-xs hover:text-accent transition-colors">
-                {listing.seller}
+                {listing.seller.slice(0, 6)}...{listing.seller.slice(-4)}
                 {copied ? <CheckCircle2 className="h-3 w-3 text-success" /> : <Copy className="h-3 w-3" />}
               </button>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Asking Price</span>
-              <span className="font-mono-numbers text-lg font-bold">{listing.askingPrice.toLocaleString()} USDC</span>
+              <span className="font-mono-numbers text-lg font-bold">{askingPrice.toLocaleString()} {listing.loanToken}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Market Value</span>
-              <span className="font-mono-numbers">{listing.marketValue.toLocaleString()} USDC</span>
+              <span className="font-mono-numbers">{loanValue.toLocaleString()} {listing.loanToken}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Your Discount</span>
               <span className={`font-mono-numbers font-medium ${discount > 0 ? "text-success" : "text-destructive"}`}>
-                {discount.toLocaleString()} USDC ({discount > 0 ? "-" : "+"}{Math.abs(parseFloat(discountPct))}%)
+                {discount.toLocaleString()} {listing.loanToken} ({discount > 0 ? "-" : "+"}{Math.abs(parseFloat(discountPct))}%)
               </span>
             </div>
           </div>
@@ -121,12 +156,12 @@ const BuyPositionModal = ({ open, onOpenChange, listing }: BuyPositionModalProps
           {/* Wallet */}
           <div className="rounded-lg border border-border p-4 space-y-2 text-sm">
             <div className="flex justify-between">
-              <span className="text-muted-foreground">Available USDC</span>
-              <span className="font-mono-numbers font-medium">{walletBalance.toLocaleString()} USDC</span>
+              <span className="text-muted-foreground">Available {listing.loanToken}</span>
+              <span className="font-mono-numbers font-medium">{walletBalance.toLocaleString()} {listing.loanToken}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">After Purchase</span>
-              <span className="font-mono-numbers font-medium">{afterPurchase.toLocaleString()} USDC</span>
+              <span className="font-mono-numbers font-medium">{afterPurchase.toLocaleString()} {listing.loanToken}</span>
             </div>
             {!hasSufficient && (
               <div className="flex items-center gap-1.5 text-destructive">
@@ -141,19 +176,19 @@ const BuyPositionModal = ({ open, onOpenChange, listing }: BuyPositionModalProps
             <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">Transaction Summary</p>
             <div className="flex justify-between">
               <span className="text-muted-foreground">You Pay</span>
-              <span className="font-mono-numbers font-bold">{listing.askingPrice.toLocaleString()} USDC</span>
+              <span className="font-mono-numbers font-bold">{askingPrice.toLocaleString()} {listing.loanToken}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">You Receive</span>
-              <span className="font-medium">{listing.type} Position NFT {listing.id}</span>
+              <span className="font-medium">{listing.nftType === "borrower" ? "Borrower" : "Lender"} Position NFT</span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Expected Return</span>
-              <span className="font-mono-numbers">{listing.repayment} at maturity</span>
+              <span className="font-mono-numbers">{repaymentValue.toLocaleString()} {listing.loanToken} at maturity</span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Projected Profit</span>
-              <span className="font-mono-numbers text-success font-medium">{projectedProfit.toLocaleString()} USDC</span>
+              <span className="font-mono-numbers text-success font-medium">{projectedProfit.toLocaleString()} {listing.loanToken}</span>
             </div>
           </div>
 
@@ -162,11 +197,28 @@ const BuyPositionModal = ({ open, onOpenChange, listing }: BuyPositionModalProps
             <div className="rounded-lg border border-warning/30 bg-warning/5 p-4 flex items-start gap-3">
               <AlertTriangle className="h-5 w-5 text-warning shrink-0 mt-0.5" />
               <div>
-                <p className="text-sm font-medium">Step 1: Approve USDC spending</p>
-                <Button variant="outline" size="sm" className="mt-2" onClick={() => setIsApproved(true)}>
-                  Approve USDC
+                <p className="text-sm font-medium">Step 1: Approve {listing.loanToken} spending</p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="mt-2"
+                  onClick={handleApprove}
+                  disabled={isApproving || !isConnected}
+                >
+                  {isApproving ? (
+                    <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Approving...</>
+                  ) : (
+                    `Approve ${listing.loanToken}`
+                  )}
                 </Button>
               </div>
+            </div>
+          )}
+
+          {isApproved && (
+            <div className="rounded-lg border border-success/30 bg-success/5 p-3 flex items-center gap-2">
+              <CheckCircle2 className="h-4 w-4 text-success" />
+              <span className="text-sm text-success">{listing.loanToken} approved for spending</span>
             </div>
           )}
         </div>
@@ -177,13 +229,19 @@ const BuyPositionModal = ({ open, onOpenChange, listing }: BuyPositionModalProps
             I understand this is a final sale
           </label>
           <div className="flex gap-2 w-full sm:justify-end">
-            <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+            <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isSubmitting}>
+              Cancel
+            </Button>
             <Button
               variant="gradient"
-              disabled={!agreed || !isApproved || !hasSufficient || isSubmitting}
+              disabled={!agreed || !isApproved || !hasSufficient || isSubmitting || !isConnected}
               onClick={handlePurchase}
             >
-              {isSubmitting ? "Processing..." : "Confirm Purchase"}
+              {isSubmitting ? (
+                <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Processing...</>
+              ) : (
+                "Confirm Purchase"
+              )}
             </Button>
           </div>
         </DialogFooter>

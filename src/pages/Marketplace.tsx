@@ -1,4 +1,7 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
+import { useAccount } from "wagmi";
+import { useConnectModal } from "@rainbow-me/rainbowkit";
+import { toast } from "sonner";
 import Header from "@/components/layout/Header";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -31,137 +34,106 @@ import {
   Clock,
   ArrowUpRight,
   ArrowDownRight,
+  Wallet,
+  Loader2,
 } from "lucide-react";
-
-// User's positions for listing
-const userPositions = [
-  { id: "#7", type: "Borrower" as const, collateral: "1.5 WBTC", loan: "50,000 USDC", timeLeft: "12d 4h" },
-  { id: "#12", type: "Lender" as const, collateral: "25 ETH", loan: "80,000 USDC", timeLeft: "18h" },
-  { id: "#15", type: "Borrower" as const, collateral: "0.5 WBTC", loan: "20,000 USDT", timeLeft: "5d 2h" },
-];
-
-// Marketplace listings
-const allListings = [
-  {
-    id: "#42",
-    type: "Lender" as const,
-    collateral: "1.5 WBTC",
-    collateralIcon: "₿",
-    loan: "50,000 USDC",
-    repayment: "52,500 USDC",
-    apr: "~5% APR",
-    askingPrice: 48000,
-    marketValue: 50000,
-    seller: "0x1234...5678",
-    timeLeft: "15d 4h",
-    expires: "In 2 days",
-    collateralType: "WBTC",
-  },
-  {
-    id: "#38",
-    type: "Borrower" as const,
-    collateral: "25 ETH",
-    collateralIcon: "Ξ",
-    loan: "80,000 USDC",
-    repayment: "86,400 USDC",
-    apr: "~8% APR",
-    askingPrice: 82000,
-    marketValue: 80000,
-    seller: "0xABCD...EF01",
-    timeLeft: "8d 12h",
-    expires: "In 5 days",
-    collateralType: "ETH",
-  },
-  {
-    id: "#55",
-    type: "Lender" as const,
-    collateral: "0.8 WBTC",
-    collateralIcon: "₿",
-    loan: "30,000 USDT",
-    repayment: "33,000 USDT",
-    apr: "~10% APR",
-    askingPrice: 28500,
-    marketValue: 30000,
-    seller: "0x9876...5432",
-    timeLeft: "22d 8h",
-    expires: "In 7 days",
-    collateralType: "WBTC",
-  },
-  {
-    id: "#61",
-    type: "Borrower" as const,
-    collateral: "10 ETH",
-    collateralIcon: "Ξ",
-    loan: "25,000 USDC",
-    repayment: "27,500 USDC",
-    apr: "~10% APR",
-    askingPrice: 24000,
-    marketValue: 25000,
-    seller: "0xDEAD...BEEF",
-    timeLeft: "3d 16h",
-    expires: "In 1 day",
-    collateralType: "ETH",
-  },
-  {
-    id: "#73",
-    type: "Lender" as const,
-    collateral: "2.0 WBTC",
-    collateralIcon: "₿",
-    loan: "100,000 USDC",
-    repayment: "112,000 USDC",
-    apr: "~12% APR",
-    askingPrice: 105000,
-    marketValue: 100000,
-    seller: "0xFACE...1234",
-    timeLeft: "28d 0h",
-    expires: "In 30 days",
-    collateralType: "WBTC",
-  },
-  {
-    id: "#29",
-    type: "Borrower" as const,
-    collateral: "15 ETH",
-    collateralIcon: "Ξ",
-    loan: "45,000 USDC",
-    repayment: "49,500 USDC",
-    apr: "~10% APR",
-    askingPrice: 43000,
-    marketValue: 45000,
-    seller: "0xBEEF...CAFE",
-    timeLeft: "6d 20h",
-    expires: "In 3 days",
-    collateralType: "ETH",
-  },
-];
+import { useLoanStore } from "@/store/useLoanStore";
+import { useMarketplaceStore } from "@/store/useMarketplaceStore";
+import type { Loan, MarketplaceListing } from "@/types";
 
 const Marketplace = () => {
+  const { address, isConnected } = useAccount();
+  const { openConnectModal } = useConnectModal();
+  const loans = useLoanStore((state) => state.loans);
+  const listings = useMarketplaceStore((state) => state.listings);
+  const listPosition = useMarketplaceStore((state) => state.listPosition);
+  const isLoading = useMarketplaceStore((state) => state.isLoading);
+
   const [search, setSearch] = useState("");
   const [showFilters, setShowFilters] = useState(false);
   const [tabFilter, setTabFilter] = useState("all");
   const [collateralFilter, setCollateralFilter] = useState("All");
 
   // Listing form state
-  const [selectedPosition, setSelectedPosition] = useState<string | null>(null);
-  const [positionTypeFilter, setPositionTypeFilter] = useState("all");
+  const [selectedLoanId, setSelectedLoanId] = useState<string | null>(null);
+  const [positionType, setPositionType] = useState<"borrower" | "lender">("lender");
   const [askingPrice, setAskingPrice] = useState("");
   const [listingExpiry, setListingExpiry] = useState("7d");
+  const [isListing, setIsListing] = useState(false);
 
   // Modal state
-  const [buyListing, setBuyListing] = useState<typeof allListings[0] | null>(null);
-  const [offerListing, setOfferListing] = useState<typeof allListings[0] | null>(null);
+  const [buyListing, setBuyListing] = useState<MarketplaceListing | null>(null);
+  const [offerListing, setOfferListing] = useState<MarketplaceListing | null>(null);
 
-  const filteredListings = allListings.filter((l) => {
-    if (tabFilter === "borrower" && l.type !== "Borrower") return false;
-    if (tabFilter === "lender" && l.type !== "Lender") return false;
-    if (collateralFilter !== "All" && l.collateralType !== collateralFilter) return false;
-    if (search && !l.id.includes(search) && !l.collateral.toLowerCase().includes(search.toLowerCase())) return false;
-    return true;
-  });
+  // Get user's loans that can be listed
+  const userLoans = useMemo(() => {
+    if (!address) return [];
+    return loans.filter((l) => {
+      const isBorrower = l.borrower.toLowerCase() === address.toLowerCase();
+      const isLender = l.lender.toLowerCase() === address.toLowerCase();
+      const isActive = l.status === "active" || l.status === "grace_period";
+      return (isBorrower || isLender) && isActive;
+    });
+  }, [loans, address]);
 
-  const selectedPos = userPositions.find((p) => p.id === selectedPosition);
+  // Filter active listings
+  const activeListings = useMemo(() => {
+    return listings.filter((l) => l.status === "active");
+  }, [listings]);
+
+  const filteredListings = useMemo(() => {
+    return activeListings.filter((l) => {
+      if (tabFilter === "borrower" && l.nftType !== "borrower") return false;
+      if (tabFilter === "lender" && l.nftType !== "lender") return false;
+      if (collateralFilter !== "All" && l.loan.collateralToken !== collateralFilter) return false;
+      if (search && !l.id.includes(search) && !l.loan.collateralAmount.toLowerCase().includes(search.toLowerCase())) return false;
+      return true;
+    });
+  }, [activeListings, tabFilter, collateralFilter, search]);
+
+  const selectedLoan = userLoans.find((l) => l.id === selectedLoanId);
   const askingPriceNum = parseFloat(askingPrice) || 0;
-  const positionValue = selectedPos ? parseFloat(selectedPos.loan.replace(/[^0-9.]/g, "")) : 0;
-  const priceDiff = askingPriceNum > 0 && positionValue > 0 ? ((askingPriceNum - positionValue) / positionValue * 100).toFixed(1) : null;
+  const positionValue = selectedLoan ? parseFloat(selectedLoan.loanAmount) : 0;
+  const priceDiff = askingPriceNum > 0 && positionValue > 0
+    ? ((askingPriceNum - positionValue) / positionValue * 100).toFixed(1)
+    : null;
+
+  const handleListPosition = async () => {
+    if (!isConnected || !address) {
+      openConnectModal?.();
+      return;
+    }
+
+    if (!selectedLoan || askingPriceNum <= 0) {
+      toast.error("Please select a position and set a price");
+      return;
+    }
+
+    setIsListing(true);
+    try {
+      await listPosition(selectedLoan, positionType, askingPrice, address);
+      toast.success("Position listed!", {
+        description: `Listed for ${askingPriceNum.toLocaleString()} ${selectedLoan.loanToken}`,
+      });
+      // Reset form
+      setSelectedLoanId(null);
+      setAskingPrice("");
+    } catch (error) {
+      console.error("Listing failed:", error);
+    } finally {
+      setIsListing(false);
+    }
+  };
+
+  // Format time left
+  const formatTimeLeft = (endTime: number): string => {
+    const diff = endTime - Date.now();
+    if (diff <= 0) return "Expired";
+    const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+    const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+    if (days > 0) return `${days}d ${hours}h`;
+    return `${hours}h`;
+  };
 
   return (
     <div className="min-h-screen bg-background">
@@ -188,6 +160,24 @@ const Marketplace = () => {
             </Button>
           </div>
         </div>
+
+        {/* Wallet Warning */}
+        {!isConnected && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mb-6 p-4 rounded-xl border border-warning/30 bg-warning/5 flex items-center gap-3"
+          >
+            <Wallet className="h-5 w-5 text-warning" />
+            <div className="flex-1">
+              <p className="text-sm font-medium">Wallet not connected</p>
+              <p className="text-xs text-muted-foreground">Connect to list positions or make purchases</p>
+            </div>
+            <Button variant="outline" size="sm" onClick={() => openConnectModal?.()}>
+              Connect
+            </Button>
+          </motion.div>
+        )}
 
         {/* Filters */}
         {showFilters && (
@@ -234,88 +224,90 @@ const Marketplace = () => {
                 {/* Step 1: Select Position */}
                 <div>
                   <p className="text-sm font-medium mb-2">Step 1: Select Position to Sell</p>
-                  <Select value={positionTypeFilter} onValueChange={setPositionTypeFilter}>
+                  <Select
+                    value={positionType}
+                    onValueChange={(v) => setPositionType(v as "borrower" | "lender")}
+                  >
                     <SelectTrigger className="bg-input border-border mb-3">
                       <SelectValue placeholder="Select Position Type" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="all">All Positions</SelectItem>
-                      <SelectItem value="Borrower">Borrower Position</SelectItem>
-                      <SelectItem value="Lender">Lender Position</SelectItem>
+                      <SelectItem value="lender">Lender Position</SelectItem>
+                      <SelectItem value="borrower">Borrower Position</SelectItem>
                     </SelectContent>
                   </Select>
 
-                  {userPositions.filter(p => positionTypeFilter === "all" || p.type === positionTypeFilter).length > 0 ? (
+                  {userLoans.length > 0 ? (
                     <div className="rounded-lg border border-border overflow-hidden">
                       <Table>
                         <TableHeader>
                           <TableRow className="border-border hover:bg-transparent">
                             <TableHead className="text-muted-foreground text-xs w-8" />
                             <TableHead className="text-muted-foreground text-xs">ID</TableHead>
-                            <TableHead className="text-muted-foreground text-xs">Type</TableHead>
+                            <TableHead className="text-muted-foreground text-xs">Collateral</TableHead>
                             <TableHead className="text-muted-foreground text-xs hidden sm:table-cell">Loan</TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
-                          {userPositions
-                            .filter(p => positionTypeFilter === "all" || p.type === positionTypeFilter)
-                            .map((pos) => (
-                              <TableRow
-                                key={pos.id}
-                                className={`border-border cursor-pointer transition-colors ${
-                                  selectedPosition === pos.id ? "bg-primary/10" : "hover:bg-secondary/30"
-                                }`}
-                                onClick={() => setSelectedPosition(pos.id)}
-                              >
-                                <TableCell>
-                                  <div className={`h-4 w-4 rounded-full border-2 ${
-                                    selectedPosition === pos.id ? "border-primary bg-primary" : "border-muted-foreground"
-                                  }`} />
-                                </TableCell>
-                                <TableCell className="font-mono-numbers text-xs">{pos.id}</TableCell>
-                                <TableCell>
-                                  <Badge variant={pos.type === "Borrower" ? "default" : "accent"} className="text-[10px]">
-                                    {pos.type}
-                                  </Badge>
-                                </TableCell>
-                                <TableCell className="font-mono-numbers text-xs hidden sm:table-cell">{pos.loan}</TableCell>
-                              </TableRow>
-                            ))}
+                          {userLoans.map((loan) => (
+                            <TableRow
+                              key={loan.id}
+                              className={`border-border cursor-pointer transition-colors ${
+                                selectedLoanId === loan.id ? "bg-primary/10" : "hover:bg-secondary/30"
+                              }`}
+                              onClick={() => setSelectedLoanId(loan.id)}
+                            >
+                              <TableCell>
+                                <div className={`h-4 w-4 rounded-full border-2 ${
+                                  selectedLoanId === loan.id ? "border-primary bg-primary" : "border-muted-foreground"
+                                }`} />
+                              </TableCell>
+                              <TableCell className="font-mono-numbers text-xs">{loan.id}</TableCell>
+                              <TableCell className="font-mono-numbers text-xs">
+                                {loan.collateralAmount} {loan.collateralToken}
+                              </TableCell>
+                              <TableCell className="font-mono-numbers text-xs hidden sm:table-cell">
+                                {parseFloat(loan.loanAmount).toLocaleString()} {loan.loanToken}
+                              </TableCell>
+                            </TableRow>
+                          ))}
                         </TableBody>
                       </Table>
                     </div>
                   ) : (
-                    <p className="text-sm text-muted-foreground text-center py-4">You have no positions to sell</p>
+                    <p className="text-sm text-muted-foreground text-center py-4">
+                      {isConnected ? "You have no positions to sell" : "Connect wallet to see your positions"}
+                    </p>
                   )}
                 </div>
 
                 {/* Step 2: Set Price */}
-                {selectedPosition && (
+                {selectedLoanId && (
                   <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
                     <p className="text-sm font-medium mb-2">Step 2: Set Price</p>
                     <Input
                       type="number"
-                      placeholder="Asking Price (USDC)"
+                      placeholder={`Asking Price (${selectedLoan?.loanToken || "USDC"})`}
                       value={askingPrice}
                       onChange={(e) => setAskingPrice(e.target.value)}
                       className="bg-input border-border font-mono-numbers mb-2"
                     />
                     <p className="text-xs text-muted-foreground mb-3">
-                      Current floor price: ~{positionValue.toLocaleString()} USDC
+                      Position value: ~{positionValue.toLocaleString()} {selectedLoan?.loanToken}
                     </p>
 
                     {askingPriceNum > 0 && (
                       <div className="rounded-lg bg-secondary/50 p-3 space-y-1.5 text-sm">
                         <div className="flex justify-between">
                           <span className="text-muted-foreground">Position Value</span>
-                          <span className="font-mono-numbers">{positionValue.toLocaleString()} USDC</span>
+                          <span className="font-mono-numbers">{positionValue.toLocaleString()} {selectedLoan?.loanToken}</span>
                         </div>
                         <div className="flex justify-between">
                           <span className="text-muted-foreground">Your Price</span>
-                          <span className="font-mono-numbers font-bold">{askingPriceNum.toLocaleString()} USDC</span>
+                          <span className="font-mono-numbers font-bold">{askingPriceNum.toLocaleString()} {selectedLoan?.loanToken}</span>
                         </div>
                         <div className="flex justify-between">
-                          <span className="text-muted-foreground">Discount</span>
+                          <span className="text-muted-foreground">Difference</span>
                           <span className={`font-mono-numbers font-medium ${
                             parseFloat(priceDiff || "0") < 0 ? "text-success" : "text-destructive"
                           }`}>
@@ -328,7 +320,7 @@ const Marketplace = () => {
                 )}
 
                 {/* Step 3: Expiration */}
-                {selectedPosition && askingPriceNum > 0 && (
+                {selectedLoanId && askingPriceNum > 0 && (
                   <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
                     <p className="text-sm font-medium mb-2">Step 3: Expiration</p>
                     <Select value={listingExpiry} onValueChange={setListingExpiry}>
@@ -348,15 +340,24 @@ const Marketplace = () => {
 
                 {/* Actions */}
                 <div className="flex gap-2 pt-2">
-                  <Button variant="outline" className="flex-1" onClick={() => { setSelectedPosition(null); setAskingPrice(""); }}>
+                  <Button
+                    variant="outline"
+                    className="flex-1"
+                    onClick={() => { setSelectedLoanId(null); setAskingPrice(""); }}
+                  >
                     Cancel
                   </Button>
                   <Button
                     variant="gradient"
                     className="flex-1"
-                    disabled={!selectedPosition || askingPriceNum <= 0}
+                    disabled={!selectedLoanId || askingPriceNum <= 0 || isListing || !isConnected}
+                    onClick={handleListPosition}
                   >
-                    List for Sale
+                    {isListing ? (
+                      <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Listing...</>
+                    ) : (
+                      "List for Sale"
+                    )}
                   </Button>
                 </div>
               </CardContent>
@@ -381,9 +382,12 @@ const Marketplace = () => {
                 {filteredListings.length > 0 ? (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {filteredListings.map((listing, i) => {
-                      const discount = listing.marketValue - listing.askingPrice;
-                      const discountPct = ((discount / listing.marketValue) * 100).toFixed(1);
+                      const loanValue = parseFloat(listing.loan.loanAmount);
+                      const price = parseFloat(listing.price);
+                      const discount = loanValue - price;
+                      const discountPct = ((discount / loanValue) * 100).toFixed(1);
                       const isDiscount = discount > 0;
+                      const timeLeft = formatTimeLeft(listing.loan.maturityTime);
 
                       return (
                         <motion.div
@@ -395,8 +399,8 @@ const Marketplace = () => {
                           <Card className="border-border bg-card hover:border-primary/30 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-primary/5">
                             <CardContent className="p-4 space-y-3">
                               <div className="flex items-center justify-between">
-                                <Badge variant={listing.type === "Borrower" ? "default" : "accent"}>
-                                  {listing.type}
+                                <Badge variant={listing.nftType === "borrower" ? "default" : "accent"}>
+                                  {listing.nftType === "borrower" ? "Borrower" : "Lender"}
                                 </Badge>
                                 <span className="font-mono-numbers text-sm text-muted-foreground">{listing.id}</span>
                               </div>
@@ -405,19 +409,21 @@ const Marketplace = () => {
                                 <div className="flex justify-between">
                                   <span className="text-muted-foreground">Collateral</span>
                                   <span className="font-mono-numbers flex items-center gap-1">
-                                    <span className="text-base">{listing.collateralIcon}</span>
-                                    {listing.collateral}
+                                    <span className="text-base">{listing.loan.collateralToken === "WBTC" ? "₿" : "Ξ"}</span>
+                                    {listing.loan.collateralAmount} {listing.loan.collateralToken}
                                   </span>
                                 </div>
                                 <div className="flex justify-between">
                                   <span className="text-muted-foreground">Loan</span>
-                                  <span className="font-mono-numbers">{listing.loan}</span>
+                                  <span className="font-mono-numbers">
+                                    {parseFloat(listing.loan.loanAmount).toLocaleString()} {listing.loanToken}
+                                  </span>
                                 </div>
                               </div>
 
                               <div className="flex items-center justify-between pt-1">
                                 <span className="font-mono-numbers text-lg font-bold">
-                                  {listing.askingPrice.toLocaleString()} USDC
+                                  {price.toLocaleString()} {listing.loanToken}
                                 </span>
                                 <Badge
                                   variant={isDiscount ? "success" : "destructive"}
@@ -431,17 +437,15 @@ const Marketplace = () => {
                               <div className="space-y-1 text-xs text-muted-foreground">
                                 <div className="flex justify-between">
                                   <span>Seller</span>
-                                  <span className="font-mono-numbers">{listing.seller}</span>
+                                  <span className="font-mono-numbers">
+                                    {listing.seller.slice(0, 6)}...{listing.seller.slice(-4)}
+                                  </span>
                                 </div>
                                 <div className="flex justify-between">
                                   <span>Loan Time Left</span>
                                   <span className="font-mono-numbers flex items-center gap-1">
-                                    <Clock className="h-3 w-3" /> {listing.timeLeft}
+                                    <Clock className="h-3 w-3" /> {timeLeft}
                                   </span>
-                                </div>
-                                <div className="flex justify-between">
-                                  <span>Listing Expires</span>
-                                  <span>{listing.expires}</span>
                                 </div>
                               </div>
 
@@ -451,6 +455,7 @@ const Marketplace = () => {
                                   size="sm"
                                   className="flex-1"
                                   onClick={() => setOfferListing(listing)}
+                                  disabled={!isConnected}
                                 >
                                   Make Offer
                                 </Button>
@@ -459,6 +464,7 @@ const Marketplace = () => {
                                   size="sm"
                                   className="flex-1"
                                   onClick={() => setBuyListing(listing)}
+                                  disabled={!isConnected}
                                 >
                                   Buy Now
                                 </Button>

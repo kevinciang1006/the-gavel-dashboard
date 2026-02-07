@@ -1,4 +1,7 @@
 import { useState } from "react";
+import { useAccount } from "wagmi";
+import { useConnectModal } from "@rainbow-me/rainbowkit";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -18,34 +21,33 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { CheckCircle2, AlertCircle } from "lucide-react";
+import { CheckCircle2, AlertCircle, Loader2 } from "lucide-react";
+import * as contracts from "@/lib/mockContracts";
+import type { MarketplaceListing } from "@/types";
 
 interface MakeOfferModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  listing: {
-    id: string;
-    type: "Borrower" | "Lender";
-    collateral: string;
-    loan: string;
-    askingPrice: number;
-    timeLeft: string;
-  };
+  listing: MarketplaceListing;
 }
 
 const MakeOfferModal = ({ open, onOpenChange, listing }: MakeOfferModalProps) => {
+  const { isConnected } = useAccount();
+  const { openConnectModal } = useConnectModal();
+
   const [offerAmount, setOfferAmount] = useState("");
   const [expiry, setExpiry] = useState("24h");
   const [message, setMessage] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const offerNum = parseFloat(offerAmount) || 0;
-  const walletBalance = 100000;
+  const askingPrice = parseFloat(listing.price);
+  const walletBalance = 100000; // Mock balance
   const hasSufficient = walletBalance >= offerNum;
   const isValid = offerNum > 0 && hasSufficient;
 
-  const diffFromAsking = offerNum > 0 ? ((offerNum - listing.askingPrice) / listing.askingPrice * 100).toFixed(1) : null;
-  const isBelowAsking = offerNum > 0 && offerNum < listing.askingPrice;
+  const diffFromAsking = offerNum > 0 ? ((offerNum - askingPrice) / askingPrice * 100).toFixed(1) : null;
+  const isBelowAsking = offerNum > 0 && offerNum < askingPrice;
 
   const expiryMap: Record<string, string> = {
     "1h": "1 hour",
@@ -55,9 +57,35 @@ const MakeOfferModal = ({ open, onOpenChange, listing }: MakeOfferModalProps) =>
     "7d": "7 days",
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
+    if (!isConnected) {
+      openConnectModal?.();
+      return;
+    }
+
+    if (!isValid) return;
+
     setIsSubmitting(true);
-    setTimeout(() => setIsSubmitting(false), 2000);
+    try {
+      await contracts.makeOffer({
+        listingId: listing.id,
+        amount: offerAmount,
+        expiresIn: expiry,
+      });
+
+      toast.success("Offer submitted!", {
+        description: `Your offer of ${offerNum.toLocaleString()} ${listing.loanToken} has been sent`,
+      });
+
+      onOpenChange(false);
+      // Reset form
+      setOfferAmount("");
+      setMessage("");
+    } catch (error) {
+      console.error("Offer failed:", error);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -76,25 +104,23 @@ const MakeOfferModal = ({ open, onOpenChange, listing }: MakeOfferModalProps) =>
           <div className="rounded-lg bg-secondary/50 p-3 space-y-1.5 text-sm">
             <div className="flex justify-between">
               <span className="text-muted-foreground">Type</span>
-              <Badge variant={listing.type === "Borrower" ? "default" : "accent"} className="text-[10px]">{listing.type}</Badge>
+              <Badge variant={listing.nftType === "borrower" ? "default" : "accent"} className="text-[10px]">
+                {listing.nftType === "borrower" ? "Borrower" : "Lender"}
+              </Badge>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Collateral</span>
-              <span className="font-mono-numbers">{listing.collateral}</span>
+              <span className="font-mono-numbers">{listing.loan.collateralAmount} {listing.loan.collateralToken}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Loan</span>
-              <span className="font-mono-numbers">{listing.loan}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Time Left</span>
-              <span className="font-mono-numbers">{listing.timeLeft}</span>
+              <span className="font-mono-numbers">{parseFloat(listing.loan.loanAmount).toLocaleString()} {listing.loanToken}</span>
             </div>
           </div>
 
           {/* Offer Input */}
           <div>
-            <label className="text-sm font-medium mb-1.5 block">Your Offer (USDC)</label>
+            <label className="text-sm font-medium mb-1.5 block">Your Offer ({listing.loanToken})</label>
             <Input
               type="number"
               placeholder="Enter amount..."
@@ -103,14 +129,14 @@ const MakeOfferModal = ({ open, onOpenChange, listing }: MakeOfferModalProps) =>
               className="bg-input border-border font-mono-numbers text-lg h-12"
             />
             <p className="text-xs text-muted-foreground mt-1.5">
-              Asking price: {listing.askingPrice.toLocaleString()} USDC
+              Asking price: {askingPrice.toLocaleString()} {listing.loanToken}
             </p>
             {offerNum > 0 && diffFromAsking && (
               <div className="mt-2">
                 {isBelowAsking ? (
                   <span className="flex items-center gap-1.5 text-sm text-warning">
                     <AlertCircle className="h-4 w-4" />
-                    Your offer: {offerNum.toLocaleString()} USDC ({diffFromAsking}% below asking)
+                    Your offer: {offerNum.toLocaleString()} {listing.loanToken} ({diffFromAsking}% below asking)
                   </span>
                 ) : (
                   <span className="flex items-center gap-1.5 text-sm text-success">
@@ -153,13 +179,13 @@ const MakeOfferModal = ({ open, onOpenChange, listing }: MakeOfferModalProps) =>
           <div className="rounded-lg border border-border p-3 space-y-1.5 text-sm">
             <div className="flex justify-between">
               <span className="text-muted-foreground">Available</span>
-              <span className="font-mono-numbers">{walletBalance.toLocaleString()} USDC</span>
+              <span className="font-mono-numbers">{walletBalance.toLocaleString()} {listing.loanToken}</span>
             </div>
             {offerNum > 0 && (
               <>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Offer Amount</span>
-                  <span className="font-mono-numbers">{offerNum.toLocaleString()} USDC</span>
+                  <span className="font-mono-numbers">{offerNum.toLocaleString()} {listing.loanToken}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Status</span>
@@ -179,13 +205,19 @@ const MakeOfferModal = ({ open, onOpenChange, listing }: MakeOfferModalProps) =>
         </div>
 
         <DialogFooter className="gap-2 sm:gap-0">
-          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isSubmitting}>
+            Cancel
+          </Button>
           <Button
             variant="gradient"
-            disabled={!isValid || isSubmitting}
+            disabled={!isValid || isSubmitting || !isConnected}
             onClick={handleSubmit}
           >
-            {isSubmitting ? "Submitting..." : "Submit Offer"}
+            {isSubmitting ? (
+              <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Submitting...</>
+            ) : (
+              "Submit Offer"
+            )}
           </Button>
         </DialogFooter>
       </DialogContent>
