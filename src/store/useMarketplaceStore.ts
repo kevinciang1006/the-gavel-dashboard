@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import type { MarketplaceListing, Loan, ListingStatus } from "@/types";
 import * as contracts from "@/lib/mockContracts";
+import { analytics } from "@/lib/analytics";
 
 // Helper to generate listing ID
 function generateListingId(): string {
@@ -121,6 +122,9 @@ export const useMarketplaceStore = create<MarketplaceStore>((set, get) => ({
         isLoading: false,
       }));
 
+      // Track analytics event
+      analytics.positionListed(newListing.id, price, nftType);
+
       return newListing;
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to list position";
@@ -133,16 +137,22 @@ export const useMarketplaceStore = create<MarketplaceStore>((set, get) => ({
     set({ isLoading: true, error: null });
 
     try {
+      const listing = get().listings.find((l) => l.id === listingId);
       await contracts.buyPosition(listingId);
 
       set((state) => ({
-        listings: state.listings.map((listing) =>
-          listing.id === listingId
-            ? { ...listing, status: "sold" as ListingStatus }
-            : listing
+        listings: state.listings.map((l) =>
+          l.id === listingId
+            ? { ...l, status: "sold" as ListingStatus }
+            : l
         ),
         isLoading: false,
       }));
+
+      // Track analytics event
+      if (listing) {
+        analytics.positionBought(listingId, listing.price);
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to buy position";
       set({ error: message, isLoading: false });

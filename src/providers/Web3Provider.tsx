@@ -1,7 +1,9 @@
+import { useEffect, useRef } from "react";
 import { RainbowKitProvider, darkTheme } from "@rainbow-me/rainbowkit";
-import { WagmiProvider } from "wagmi";
+import { WagmiProvider, useAccount } from "wagmi";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { config } from "@/config/wagmi";
+import { analytics } from "@/lib/analytics";
 import "@rainbow-me/rainbowkit/styles.css";
 
 // Create a client for react-query
@@ -38,12 +40,29 @@ interface Web3ProviderProps {
   children: React.ReactNode;
 }
 
+// Track wallet connection events
+function WalletConnectionTracker({ children }: { children: React.ReactNode }) {
+  const { address, isConnected, connector } = useAccount();
+  const wasConnected = useRef(false);
+
+  useEffect(() => {
+    if (isConnected && address && !wasConnected.current) {
+      analytics.walletConnected(address, connector?.name);
+      wasConnected.current = true;
+    } else if (!isConnected) {
+      wasConnected.current = false;
+    }
+  }, [isConnected, address, connector]);
+
+  return <>{children}</>;
+}
+
 export function Web3Provider({ children }: Web3ProviderProps) {
   return (
     <WagmiProvider config={config}>
       <QueryClientProvider client={queryClient}>
         <RainbowKitProvider theme={theGavelTheme} modalSize="compact">
-          {children}
+          <WalletConnectionTracker>{children}</WalletConnectionTracker>
         </RainbowKitProvider>
       </QueryClientProvider>
     </WagmiProvider>

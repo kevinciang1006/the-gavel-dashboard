@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import type { Auction, AuctionStatus } from "@/types";
 import * as contracts from "@/lib/mockContracts";
+import { analytics } from "@/lib/analytics";
 
 // Helper to generate auction ID
 function generateAuctionId(): string {
@@ -163,6 +164,9 @@ export const useAuctionStore = create<AuctionStore>((set, get) => ({
         isLoading: false,
       }));
 
+      // Track analytics event
+      analytics.auctionCreated(params.collateralToken, params.loanToken, params.loanAmount);
+
       return newAuction;
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to create auction";
@@ -190,6 +194,9 @@ export const useAuctionStore = create<AuctionStore>((set, get) => ({
         ),
         isLoading: false,
       }));
+
+      // Track analytics event
+      analytics.bidPlaced(auctionId, bidAmount);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to place bid";
       set({ error: message, isLoading: false });

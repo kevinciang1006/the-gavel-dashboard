@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/select";
 import { CheckCircle2, AlertCircle, Loader2 } from "lucide-react";
 import * as contracts from "@/lib/mockContracts";
+import { analytics } from "@/lib/analytics";
 import type { MarketplaceListing } from "@/types";
 
 interface MakeOfferModalProps {
@@ -72,6 +73,9 @@ const MakeOfferModal = ({ open, onOpenChange, listing }: MakeOfferModalProps) =>
         amount: offerAmount,
         expiresIn: expiry,
       });
+
+      // Track analytics event
+      analytics.offerMade(listing.id, offerAmount);
 
       toast.success("Offer submitted!", {
         description: `Your offer of ${offerNum.toLocaleString()} ${listing.loanToken} has been sent`,

@@ -35,6 +35,7 @@ import {
 import { useAuctionStore } from "@/store/useAuctionStore";
 import { useLoanStore } from "@/store/useLoanStore";
 import * as contracts from "@/lib/mockContracts";
+import { analytics } from "@/lib/analytics";
 
 type NFT = {
   collection: string;
@@ -178,7 +179,7 @@ const NFTLending = () => {
 
     setIsMinting(true);
     try {
-      const result = await contracts.mintTestNFT();
+      await contracts.mintTestNFT();
       // Add a new mock NFT to the user's collection
       const newNFT: NFT = {
         collection: "Test Collection",
@@ -189,6 +190,10 @@ const NFTLending = () => {
         category: "Art",
       };
       setUserNFTs((prev) => [...prev, newNFT]);
+
+      // Track analytics event
+      analytics.nftMinted(newNFT.collection, newNFT.tokenId);
+
       toast.success("NFT Minted!", {
         description: `You received ${newNFT.collection} ${newNFT.tokenId}`,
       });

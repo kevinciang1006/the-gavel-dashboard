@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import type { Loan, LoanStatus, Auction } from "@/types";
 import * as contracts from "@/lib/mockContracts";
+import { analytics } from "@/lib/analytics";
 
 // Helper to generate loan ID
 function generateLoanId(): string {
@@ -130,16 +131,22 @@ export const useLoanStore = create<LoanStore>((set, get) => ({
     set({ isLoading: true, error: null });
 
     try {
+      const loan = get().loans.find((l) => l.id === loanId);
       await contracts.repayLoan(loanId);
 
       set((state) => ({
-        loans: state.loans.map((loan) =>
-          loan.id === loanId
-            ? { ...loan, status: "repaid" as LoanStatus }
-            : loan
+        loans: state.loans.map((l) =>
+          l.id === loanId
+            ? { ...l, status: "repaid" as LoanStatus }
+            : l
         ),
         isLoading: false,
       }));
+
+      // Track analytics event
+      if (loan) {
+        analytics.loanRepaid(loanId, loan.repaymentAmount);
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to repay loan";
       set({ error: message, isLoading: false });
