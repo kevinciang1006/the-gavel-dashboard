@@ -1,6 +1,5 @@
 import { Link, useLocation } from "react-router-dom";
-import { Button } from "@/components/ui/button";
-import { Wallet } from "lucide-react";
+import { ConnectButton } from "@rainbow-me/rainbowkit";
 
 const navItems = [
   { label: "Dashboard", path: "/" },
@@ -38,10 +37,20 @@ const Header = () => {
             ))}
           </nav>
         </div>
-        <Button variant="gradient" size="default" className="gap-2">
-          <Wallet className="h-4 w-4" />
-          Connect Wallet
-        </Button>
+        <ConnectButton
+          accountStatus={{
+            smallScreen: "avatar",
+            largeScreen: "full",
+          }}
+          chainStatus={{
+            smallScreen: "icon",
+            largeScreen: "full",
+          }}
+          showBalance={{
+            smallScreen: false,
+            largeScreen: true,
+          }}
+        />
       </div>
     </header>
   );
