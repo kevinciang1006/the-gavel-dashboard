@@ -19,6 +19,8 @@ import {
 } from "@/components/ui/table";
 import { Clock, Trophy, Copy, CheckCircle2, Bitcoin, Disc } from "lucide-react";
 import type { Auction } from "@/types";
+import type { NFTAuction } from "@/store/useNFTStore";
+import { Image as ImageIcon } from "lucide-react";
 
 interface Bid {
 	bidder: string;
@@ -30,11 +32,25 @@ interface Bid {
 interface ViewBidsModalProps {
 	open: boolean;
 	onOpenChange: (open: boolean) => void;
-	auction: Auction | null;
+	auction: Auction | NFTAuction | null;
+}
+
+function isNFTAuction(auction: Auction | NFTAuction): auction is NFTAuction {
+	return "collection" in auction;
 }
 
 // Generate mock bids based on auction data
-function generateMockBids(auction: Auction): Bid[] {
+function generateMockBids(auction: Auction | NFTAuction): Bid[] {
+	// Use existing bids if available (for NFT auctions)
+	if (isNFTAuction(auction) && auction.bids && auction.bids.length > 0) {
+		return auction.bids.map((bid) => ({
+			bidder: bid.bidder,
+			amount: bid.amount,
+			apr: bid.apr,
+			timestamp: bid.timestamp,
+		}));
+	}
+
 	if (auction.bidCount === 0 || !auction.currentBid) return [];
 
 	const loanAmount = parseFloat(auction.loanAmount);
@@ -131,7 +147,9 @@ const ViewBidsModal = ({ open, onOpenChange, auction }: ViewBidsModalProps) => {
 				<div className="rounded-lg bg-secondary/50 p-4 space-y-3">
 					<div className="flex items-center gap-4">
 						<div className="h-16 w-16 rounded-lg bg-muted flex items-center justify-center">
-							{auction.collateralToken === "WBTC" ? (
+							{isNFTAuction(auction) ? (
+								<ImageIcon className="h-8 w-8 text-purple-500" />
+							) : auction.collateralToken === "WBTC" ? (
 								<Bitcoin className="h-8 w-8 text-orange-500" />
 							) : (
 								<Disc className="h-8 w-8 text-blue-500" />
@@ -139,8 +157,19 @@ const ViewBidsModal = ({ open, onOpenChange, auction }: ViewBidsModalProps) => {
 						</div>
 						<div className="flex-1">
 							<p className="font-medium text-lg">
-								{auction.collateralAmount}{" "}
-								{auction.collateralToken}
+								{isNFTAuction(auction) ? (
+									<>
+										{auction.collection}{" "}
+										<span className="text-muted-foreground">
+											{auction.tokenId}
+										</span>
+									</>
+								) : (
+									<>
+										{auction.collateralAmount}{" "}
+										{auction.collateralToken}
+									</>
+								)}
 							</p>
 							<p className="text-sm text-muted-foreground font-mono-numbers">
 								{auction.id}
