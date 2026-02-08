@@ -1,74 +1,61 @@
-# The Gavel Dashboard
+# The Gavel - DeFi Lending Demo
 
-Oracle-free DeFi lending platform with competitive auctions, market-driven rates, and zero oracle risk.
+A fully functional demo of The Gavel's oracle-free DeFi lending protocol, rebuilt with modern Web3 integration.
 
-## Project Info
+## 🔗 Live Demo
 
-This is a React-based dashboard for The Gavel Protocol, built with modern web technologies.
+https://gavel-demo-554446678762.us-central1.run.app
 
-## Technologies Used
+## 🎥 Video Walkthrough
 
-This project is built with:
+[Video Walkthrough](https://www.loom.com/share/c69a43ecfc834caf9027b03468593167)
 
-- Vite
+## ✨ Features
+
+- **Wallet Connection**: MetaMask support via RainbowKit
+- **Auction System**: Create auctions with ERC-20 or NFT collateral
+- **Competitive Bidding**: Lenders compete to offer best rates
+- **Loan Management**: Track active loans, repay, or claim collateral
+- **Secondary Marketplace**: Trade loan positions before maturity
+- **NFT Lending**: Same auction mechanism for NFT collateral
+- **Analytics Dashboard**: Protocol metrics and yield curves
+
+## 🛠️ Tech Stack
+
+- React 19
 - TypeScript
-- React
-- shadcn-ui
+- Vite
 - Tailwind CSS
-- RainbowKit & wagmi (Web3 integration)
-- Framer Motion (animations)
+- shadcn/ui
+- wagmi v2
+- viem
+- RainbowKit
+- Zustand (state management)
+- Google Analytics 4
 
-## Getting Started
+## 🚀 Run Locally
 
-### Prerequisites
+```bash
+# Clone repo
+git clone [your-repo-url]
 
-- Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
+# Install dependencies
+npm install
 
-### Installation
+# Add environment variables
+cp .env.example .env
+# Add your WalletConnect Project ID and GA Measurement ID
 
-```sh
-# Step 1: Clone the repository
-git clone <YOUR_GIT_URL>
-
-# Step 2: Navigate to the project directory
-cd the-gavel-dashboard
-
-# Step 3: Install dependencies
-npm i
-
-# Step 4: Start the development server
+# Run dev server
 npm run dev
 ```
 
-The application will be available at `http://localhost:8080`
+## 📝 About
 
-## Available Scripts
+Built as a job application demo for The Gavel's Frontend Developer role.
 
-- `npm run dev` - Start development server
-- `npm run build` - Build for production
-- `npm run build:dev` - Build in development mode
-- `npm run preview` - Preview production build
-- `npm run lint` - Run ESLint
-- `npm test` - Run tests
-- `npm run test:watch` - Run tests in watch mode
+The original testnet demo had wallet connection issues, so I rebuilt the entire interface with working Web3 integration and additional features.
 
-## Project Structure
+## 👤 Author
 
-```
-src/
-├── components/     # Reusable UI components
-├── pages/          # Page components
-├── store/          # Zustand state management
-├── types/          # TypeScript type definitions
-└── main.tsx        # Application entry point
-```
-
-## Deployment
-
-Build the project for production:
-
-```sh
-npm run build
-```
-
-The build output will be in the `dist` directory, ready to be deployed to any static hosting service.
+Kevin Ciang - [LinkedIn](https://linkedin.com/in/kevinciang1006)
